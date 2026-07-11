@@ -1,0 +1,6 @@
+{
+  "name": "Zakora TC",
+  "description": "منصة تعليمية متكاملة لتعلم البرمجة ببساطة مع الأستاذ عبد الوهاب أحمد، تشمل دورات CS50 و SQL وحل المشكلات والاستفسارات التفاعلية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
