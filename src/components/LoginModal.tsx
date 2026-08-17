@@ -3,7 +3,7 @@ import { LogIn, User, Award, Shield, Mail, Lock, Eye, EyeOff } from "lucide-reac
 import { motion, AnimatePresence } from "motion/react";
 
 interface LoginProps {
-  onLoginSuccess: (username: string, email: string, avatar: string) => void;
+  onLoginSuccess: (username: string, email: string, avatar: string, isGuest: boolean) => void;
 }
 
 const AVATARS = [
@@ -25,6 +25,24 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
   const [googleError, setGoogleError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  const logVisitorToServer = async (name: string, email: string, avatar: string, isGuest: boolean) => {
+    try {
+      await fetch("/api/visitors/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          email,
+          avatar,
+          isGuest,
+          points: 50
+        })
+      });
+    } catch (e) {
+      console.warn("Could not sync visitor to server:", e);
+    }
+  };
+
   const handleCustomSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const name = usernameInput.trim();
@@ -37,16 +55,21 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
       return;
     }
 
+    const guestEmail = `${name.toLowerCase().replace(/\s+/g, "")}@student.zakora.tc`;
+
     // Save to local storage
     localStorage.setItem("username", name);
     localStorage.setItem("user_avatar", selectedAvatar);
-    localStorage.setItem("user_email", `${name.toLowerCase().replace(/\s+/g, "")}@student.zakora.tc`);
+    localStorage.setItem("user_email", guestEmail);
+    localStorage.setItem("user_is_guest", "true");
+    localStorage.setItem("user_access_level", "restricted_5pct");
     
     if (!localStorage.getItem("user_points")) {
       localStorage.setItem("user_points", "50");
     }
 
-    onLoginSuccess(name, `${name.toLowerCase().replace(/\s+/g, "")}@student.zakora.tc`, selectedAvatar);
+    logVisitorToServer(name, guestEmail, selectedAvatar, true);
+    onLoginSuccess(name, guestEmail, selectedAvatar, true);
   };
 
   const handleGoogleSubmit = (e: React.FormEvent) => {
@@ -84,11 +107,17 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
       
       // Special override for teacher/admin
       let avatarChar = "🎓";
-      if (email.toLowerCase() === "abdelwahabhagag.ml2pg@gmail.com" || email.toLowerCase() === "zakora.tc.admin@gmail.com" || email.toLowerCase().includes("admin")) {
+      const eLower = email.toLowerCase();
+      const isAdmin = eLower.includes("abdelwahabhagag") || 
+                      eLower.includes("hagag") ||
+                      eLower === "zakora.tc.admin@gmail.com" || 
+                      eLower.includes("admin") ||
+                      eLower.endsWith("@zakora.tc");
+
+      if (isAdmin) {
         displayName = "المهندس عبدالوهاب أحمد (الأدمن)";
         avatarChar = "🎓";
       } else {
-        // Random avatar from the list
         avatarChar = AVATARS[Math.floor(Math.random() * AVATARS.length)];
       }
 
@@ -96,13 +125,18 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
       localStorage.setItem("username", displayName);
       localStorage.setItem("user_avatar", avatarChar);
       localStorage.setItem("user_email", email.toLowerCase());
+      localStorage.setItem("user_is_guest", "false");
+      if (isAdmin) {
+        localStorage.setItem("user_access_level", "full");
+      }
       
       if (!localStorage.getItem("user_points")) {
         localStorage.setItem("user_points", "50");
       }
 
-      onLoginSuccess(displayName, email.toLowerCase(), avatarChar);
-    }, 1200);
+      logVisitorToServer(displayName, email.toLowerCase(), avatarChar, false);
+      onLoginSuccess(displayName, email.toLowerCase(), avatarChar, false);
+    }, 1000);
   };
 
   return (
