@@ -98,3 +98,19 @@ export interface JobApplication {
   status: "قيد المراجعة" | "مقبول مبدئياً" | "مكتمل";
   appliedAt: string;
 }
+
+export interface VisitorRecord {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  isGuest: boolean;
+  joinedAt: string;
+  lastVisitAt: string;
+  visitCount: number;
+  accessLevel: "full" | "restricted_5pct" | "blocked";
+  activeCourseId?: string | null;
+  completedLessons?: string[];
+  points?: number;
+  notes?: string;
+}
