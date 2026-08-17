@@ -221,9 +221,12 @@ export default function App() {
     setIsGuest(guestMode);
     setShowLoginModalForGoogle(false);
     
-    const isAdmin = email.toLowerCase() === "abdelwahabhagag.ml2pg@gmail.com" || 
-                    email.toLowerCase() === "zakora.tc.admin@gmail.com" || 
-                    email.toLowerCase().includes("admin");
+    const eLower = email.toLowerCase();
+    const isAdmin = eLower.includes("abdelwahab") || 
+                    eLower.includes("hagag") ||
+                    eLower === "zakora.tc.admin@gmail.com" || 
+                    eLower.includes("admin") ||
+                    eLower.endsWith("@zakora.tc");
 
     const access = isAdmin ? "full" : "restricted_5pct";
     setUserAccessLevel(access);
