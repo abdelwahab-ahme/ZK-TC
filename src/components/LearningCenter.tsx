@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Course, Lesson } from "../types";
 import { 
   Play, CheckCircle2, ChevronRight, HelpCircle, 
-  Award, RefreshCw, Layers, ExternalLink 
+  Award, RefreshCw, Layers, Lock, ShieldCheck, 
+  AlertTriangle, ArrowLeft, Send, Check
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 
 interface LearningCenterProps {
   completedLessons: string[];
@@ -12,6 +13,10 @@ interface LearningCenterProps {
   onAddPoints: (points: number) => void;
   initialCourseId?: string;
   courses: Course[];
+  userEmail?: string;
+  accessLevel?: "full" | "restricted_5pct" | "blocked";
+  activeCourseId?: string | null;
+  onSetActiveCourse?: (courseId: string) => void;
 }
 
 export default function LearningCenter({
@@ -19,10 +24,25 @@ export default function LearningCenter({
   onToggleLesson,
   onAddPoints,
   initialCourseId,
-  courses
+  courses,
+  userEmail = "",
+  accessLevel = "restricted_5pct",
+  activeCourseId,
+  onSetActiveCourse
 }: LearningCenterProps) {
+  // Admin check
+  const isAdmin = userEmail.toLowerCase() === "abdelwahabhagag.ml2pg@gmail.com" || 
+                  userEmail.toLowerCase() === "zakora.tc.admin@gmail.com" || 
+                  userEmail.toLowerCase().includes("admin") ||
+                  accessLevel === "full";
+
   // Safe initial course selection
   const getInitialCourse = (): Course => {
+    // If user has an active course they are enrolled in, prioritize it
+    if (activeCourseId) {
+      const activeFound = courses.find(c => c.id === activeCourseId);
+      if (activeFound) return activeFound;
+    }
     if (initialCourseId) {
       const found = courses.find(c => c.id === initialCourseId);
       if (found) return found;
@@ -36,13 +56,17 @@ export default function LearningCenter({
     return course.lessons?.[0] || { id: "no_lesson", title: "No Lessons", titleAr: "لا توجد محاضرات بعد", duration: "0", summary: "", summaryAr: "" };
   });
 
+  // Access request state
+  const [requestSent, setRequestSent] = useState(false);
+  const [requestNotes, setRequestNotes] = useState("");
+  const [showRequestModal, setShowRequestModal] = useState(false);
+
   // Sync state if course data updates from Admin Panel
   useEffect(() => {
     const updatedCourse = courses.find(c => c.id === activeCourse.id) || courses[0];
     if (updatedCourse) {
       setActiveCourse(updatedCourse);
       
-      // Keep selected lesson or select first one if not found or invalid
       const updatedLesson = updatedCourse.lessons?.find(l => l.id === selectedLesson.id) || updatedCourse.lessons?.[0];
       if (updatedLesson) {
         setSelectedLesson(updatedLesson);
@@ -51,18 +75,81 @@ export default function LearningCenter({
       }
     }
   }, [courses, activeCourse.id]);
+
   // Quiz states
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizSuccess, setQuizSuccess] = useState(false);
 
+  // Helper: check completion percentage of any course
+  const getCourseProgress = (course: Course) => {
+    if (!course.lessons || course.lessons.length === 0) return { completed: 0, total: 0, percent: 100, isFinished: true };
+    const completedCount = course.lessons.filter(l => completedLessons.includes(l.id)).length;
+    const total = course.lessons.length;
+    const percent = Math.round((completedCount / total) * 100);
+    return { completed: completedCount, total, percent, isFinished: completedCount === total };
+  };
+
+  // Check if current user is currently locked into another course (Single Active Course Rule)
+  // Determine if there is an ongoing unfinished enrolled course
+  const currentEnrolledCourseId = activeCourseId || (function() {
+    // If not set explicitly, find if user has started lessons in any course
+    for (const c of courses) {
+      const started = c.lessons.some(l => completedLessons.includes(l.id));
+      const finished = c.lessons.length > 0 && c.lessons.every(l => completedLessons.includes(l.id));
+      if (started && !finished) return c.id;
+    }
+    return null;
+  })();
+
+  const userEnrolledCourse = courses.find(c => c.id === currentEnrolledCourseId);
+  const enrolledCourseProgress = userEnrolledCourse ? getCourseProgress(userEnrolledCourse) : null;
+  
+  // Can user access the currently viewed activeCourse?
+  // User cannot view a different course if they are currently enrolled in another course that is not 100% completed
+  const isCourseBlockedByEnrollment = !isAdmin && 
+    userEnrolledCourse && 
+    userEnrolledCourse.id !== activeCourse.id && 
+    enrolledCourseProgress && 
+    !enrolledCourseProgress.isFinished;
+
+  // Check 5% limitation
+  // If user is not admin and has restricted_5pct:
+  // Allowed lessons = Math.max(1, Math.ceil(activeCourse.lessons.length * 0.05)) (e.g. 1st lesson only)
+  const allowedLessons5Pct = Math.max(1, Math.ceil(activeCourse.lessons.length * 0.05));
+  
+  const currentLessonIndex = activeCourse.lessons.findIndex(l => l.id === selectedLesson.id);
+  const isLessonRestricted5Pct = !isAdmin && (accessLevel === "restricted_5pct") && (currentLessonIndex >= allowedLessons5Pct);
+
+  // Check Sequential Lesson Lock
+  // Lesson at index i is unlocked only if index == 0 OR lesson[i-1] is completed in completedLessons
+  const isLessonSequentiallyLocked = !isAdmin && currentLessonIndex > 0 && (function() {
+    const prevLesson = activeCourse.lessons[currentLessonIndex - 1];
+    return !completedLessons.includes(prevLesson.id);
+  })();
+
+  const prevLessonObj = currentLessonIndex > 0 ? activeCourse.lessons[currentLessonIndex - 1] : null;
+
   const handleCourseChange = (course: Course) => {
+    // If student isn't enrolled yet, enroll them in this course
+    if (!currentEnrolledCourseId && onSetActiveCourse) {
+      onSetActiveCourse(course.id);
+    }
     setActiveCourse(course);
     setSelectedLesson(course.lessons[0]);
     resetQuiz();
   };
 
-  const handleLessonChange = (lesson: Lesson) => {
+  const handleLessonChange = (lesson: Lesson, index: number) => {
+    // Check sequential lock
+    if (!isAdmin && index > 0) {
+      const prevLesson = activeCourse.lessons[index - 1];
+      if (!completedLessons.includes(prevLesson.id)) {
+        setSelectedLesson(lesson);
+        resetQuiz();
+        return;
+      }
+    }
     setSelectedLesson(lesson);
     resetQuiz();
   };
@@ -95,220 +182,509 @@ export default function LearningCenter({
 
   const handleCompleteToggle = () => {
     const pointsReward = isCompleted ? -10 : 10;
+    
+    // If starting a course for the first time, enroll the student
+    if (!activeCourseId && onSetActiveCourse) {
+      onSetActiveCourse(activeCourse.id);
+    }
+
     onToggleLesson(selectedLesson.id, pointsReward);
+  };
+
+  const handleSendAccessRequest = async () => {
+    setRequestSent(true);
+    try {
+      await fetch("/api/inquiries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `طلب ترخيص المحتوى الكامل للدورة: ${activeCourse.titleAr}`,
+          author: userEmail || "طالب الأكاديمية",
+          content: `طلب إذن ترقية من 5% إلى 100% للمشاهدة والمتابعة الكاملة. ملاحظات الطالب: ${requestNotes || "أرجو منحي صلاحية إكمال باقي الدورة."}`
+        })
+      });
+    } catch (e) {
+      console.warn(e);
+    }
   };
 
   return (
     <div className="py-12 px-4 sm:px-6 max-w-7xl mx-auto rtl-dir">
       
-      {/* Title */}
-      <div className="text-center mb-10">
+      {/* Header Banner */}
+      <div className="text-center mb-8">
+        <div className="inline-flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 px-3.5 py-1.5 rounded-full text-indigo-300 text-xs font-semibold mb-3">
+          <ShieldCheck className="w-4 h-4 text-indigo-400" />
+          <span>منصة تعليمية مشفرة ومحمية | مشغل الفيديو الآمن</span>
+        </div>
         <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3">مركز المحاضرات والتعلم</h2>
         <p className="text-sm text-slate-400 max-w-xl mx-auto leading-relaxed">
-          تصفح الدروس والأسابيع، تابع الفيديوهات والشروحات واجتز الاختبار القصير لكل درس لتحصيل النقاط
+          شاهد المحاضرات بالترتيب الأكاديمي، واجتز الاختبار القصير لفتح الدروس التالية وحصد النقاط
         </p>
       </div>
 
       {/* Course Selector Tabs */}
-      <div className="flex justify-center gap-4 mb-8 flex-wrap">
-        {courses.map(course => (
-          <button
-            key={course.id}
-            onClick={() => handleCourseChange(course)}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all border ${
-              activeCourse.id === course.id
-                ? "bg-indigo-600/20 border-indigo-500 text-indigo-300 shadow-lg shadow-indigo-500/10"
-                : "bg-[#0f172a] border-white/5 text-slate-400 hover:text-white"
-            }`}
-          >
-            {course.titleAr}
-          </button>
-        ))}
+      <div className="flex justify-center gap-3 mb-8 flex-wrap">
+        {courses.map(course => {
+          const prog = getCourseProgress(course);
+          const isSelected = activeCourse.id === course.id;
+          const isEnrolledCurrent = userEnrolledCourse?.id === course.id;
+          
+          return (
+            <button
+              key={course.id}
+              onClick={() => handleCourseChange(course)}
+              className={`px-5 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all border flex items-center gap-2.5 cursor-pointer ${
+                isSelected
+                  ? "bg-indigo-600/20 border-indigo-500 text-indigo-300 shadow-lg shadow-indigo-500/10 scale-105"
+                  : "bg-[#0f172a] border-white/5 text-slate-400 hover:text-white"
+              }`}
+            >
+              <span>{course.titleAr}</span>
+              {prog.isFinished ? (
+                <span className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] rounded-full">
+                  مكتمل 100% ✓
+                </span>
+              ) : isEnrolledCurrent ? (
+                <span className="px-2 py-0.5 bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-[10px] rounded-full">
+                  الكورس النشط ({prog.percent}%)
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Left column: Lessons menu */}
-        <div className="lg:col-span-1 bg-[#0f172a] border border-white/5 rounded-2xl p-5 h-fit">
-          <h3 className="text-md font-bold text-slate-200 mb-4 pb-3 border-b border-white/5 flex items-center gap-2">
-            <Layers className="w-4 h-4 text-indigo-400" />
-            <span>فهرس الدروس ({activeCourse.lessons.length})</span>
-          </h3>
-          
-          <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1">
-            {activeCourse.lessons.map((lesson) => {
-              const lessonDone = completedLessons.includes(lesson.id);
-              const isSelected = selectedLesson.id === lesson.id;
-              
-              return (
-                <button
-                  key={lesson.id}
-                  onClick={() => handleLessonChange(lesson)}
-                  className={`w-full text-right p-3.5 rounded-xl transition-all duration-200 flex items-center justify-between gap-3 border ${
-                    isSelected
-                      ? "bg-indigo-600/15 border-indigo-500 text-white shadow-sm"
-                      : "bg-[#131b2e]/40 border-transparent text-slate-300 hover:bg-[#131b2e] hover:border-white/5"
-                  }`}
-                >
-                  <div className="space-y-1">
-                    <p className={`text-sm font-bold leading-snug ${isSelected ? "text-indigo-300" : "text-slate-200"}`}>
-                      {lesson.titleAr}
-                    </p>
-                    <p className="text-xs text-slate-500 font-mono ltr-dir">{lesson.duration}</p>
-                  </div>
-                  
-                  {lessonDone ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  ) : (
-                    <div className="w-4 h-4 rounded-full border-2 border-slate-600 shrink-0" />
-                  )}
-                </button>
-              );
-            })}
+      {/* SINGLE ACTIVE COURSE ENFORCEMENT BARRIER */}
+      {isCourseBlockedByEnrollment ? (
+        <motion.div 
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-[#0f172a] border-2 border-amber-500/30 rounded-3xl p-8 sm:p-12 text-center max-w-2xl mx-auto shadow-2xl space-y-6"
+        >
+          <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center mx-auto">
+            <Lock className="w-8 h-8" />
           </div>
-        </div>
 
-        {/* Right columns: Main lesson workspace */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* Video Player Display */}
-          <div className="bg-[#0f172a] border border-white/5 rounded-2xl overflow-hidden shadow-xl">
-            {selectedLesson.youtubeId ? (
-              <div className="aspect-video w-full relative bg-black">
-                <iframe
-                  id={`youtube-iframe-${selectedLesson.id}`}
-                  src={`https://www.youtube.com/embed/${selectedLesson.youtubeId}`}
-                  title={selectedLesson.titleAr}
-                  className="w-full h-full border-0 absolute inset-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              </div>
-            ) : (
-              <div className="aspect-video bg-indigo-950/20 flex flex-col items-center justify-center p-8 text-center gap-3">
-                <Play className="w-12 h-12 text-indigo-400" />
-                <p className="text-slate-300 font-bold">لم يتم إدراج فيديو لهذا الأسبوع بعد</p>
-              </div>
-            )}
-            
-            {/* Lesson details bar */}
-            <div className="p-6 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <h3 className="text-xl font-bold text-white mb-1">{selectedLesson.titleAr}</h3>
-                  <p className="text-xs text-slate-500 ltr-dir">{selectedLesson.title}</p>
-                </div>
-                
-                <button
-                  id="complete-lesson-btn"
-                  onClick={handleCompleteToggle}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1.5 shrink-0 border cursor-pointer ${
-                    isCompleted
-                      ? "bg-emerald-600/20 border-emerald-500 text-emerald-300"
-                      : "bg-[#1e293b] border-white/10 text-slate-300 hover:text-white"
-                  }`}
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>{isCompleted ? "مكتمل (تمت الإضافة)" : "تحديد كمقروء ومكتمل"}</span>
-                </button>
-              </div>
+          <div className="space-y-3">
+            <h3 className="text-xl sm:text-2xl font-bold text-white">
+              سياسة الالتزام الأكاديمي: دراسة كورس واحد في نفس الوقت
+            </h3>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              عزيزي الطالب، حرصاً على تركيزك وتحصيلك العلمي المتميز، يُشترط إنهاء جميع محاضرات واختبارات كورس <span className="text-indigo-400 font-bold">"{userEnrolledCourse?.titleAr}"</span> بنسبة 100% قبل الانتقال والبدء في دورة أخرى.
+            </p>
+          </div>
 
-              <div className="border-t border-white/5 pt-4">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">ملخص المحتوى</h4>
-                <p className="text-sm text-slate-300 leading-relaxed font-medium">
-                  {selectedLesson.summaryAr}
-                </p>
-              </div>
+          {/* Current Progress Display */}
+          <div className="p-4 bg-[#131b2e] border border-white/5 rounded-2xl space-y-3 text-right">
+            <div className="flex justify-between text-xs text-slate-300 font-bold">
+              <span>نسبة تقدمك في {userEnrolledCourse?.titleAr}:</span>
+              <span className="text-indigo-400 font-mono">{enrolledCourseProgress?.completed} من {enrolledCourseProgress?.total} دروس ({enrolledCourseProgress?.percent}%)</span>
+            </div>
+            <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-indigo-500 to-emerald-500 rounded-full transition-all duration-500"
+                style={{ width: `${enrolledCourseProgress?.percent || 0}%` }}
+              />
             </div>
           </div>
 
-          {/* Lesson Quiz Component */}
-          {selectedLesson.quiz && (
-            <div className="bg-[#0f172a] border border-white/5 rounded-2xl p-6 sm:p-8 space-y-6 shadow-xl">
-              <div className="flex items-center gap-2.5 pb-4 border-b border-white/5">
-                <HelpCircle className="w-5 h-5 text-indigo-400" />
-                <h3 className="text-md font-bold text-white">اختبر فهمك للدرس (+15 نقطة)</h3>
-              </div>
+          <button
+            onClick={() => userEnrolledCourse && handleCourseChange(userEnrolledCourse)}
+            className="w-full sm:w-auto px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 mx-auto cursor-pointer"
+          >
+            <span>العودة ومتابعة دراستي الحالية في {userEnrolledCourse?.titleAr}</span>
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+        </motion.div>
+      ) : (
+        /* NORMAL LEARNING CENTER WORKSPACE */
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Left column: Lessons menu with sequential & 5% badges */}
+          <div className="lg:col-span-1 bg-[#0f172a] border border-white/5 rounded-2xl p-5 h-fit space-y-4 shadow-xl">
+            <div className="pb-3 border-b border-white/5 flex items-center justify-between">
+              <h3 className="text-md font-bold text-slate-200 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-indigo-400" />
+                <span>فهرس الدروس ({activeCourse.lessons.length})</span>
+              </h3>
+              {!isAdmin && accessLevel === "restricted_5pct" && (
+                <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold">
+                  عينة 5% مصرحة
+                </span>
+              )}
+            </div>
+            
+            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+              {activeCourse.lessons.map((lesson, idx) => {
+                const lessonDone = completedLessons.includes(lesson.id);
+                const isSelected = selectedLesson.id === lesson.id;
+                
+                // Sequential lock: idx > 0 and previous lesson not done
+                const prevDone = idx === 0 || completedLessons.includes(activeCourse.lessons[idx - 1].id);
+                const isSequentialLocked = !isAdmin && !prevDone;
+                
+                // 5% restricted lock
+                const is5PctLocked = !isAdmin && (accessLevel === "restricted_5pct") && (idx >= allowedLessons5Pct);
 
-              <div className="space-y-4">
-                <p className="text-sm sm:text-base font-semibold text-slate-200 leading-relaxed">
-                  {selectedLesson.quiz.questionAr}
-                </p>
+                const isLocked = isSequentialLocked || is5PctLocked;
 
-                <div className="grid grid-cols-1 gap-3">
-                  {selectedLesson.quiz.options.map((option, idx) => {
-                    const isSelected = selectedOption === idx;
-                    const showCorrect = quizSubmitted && idx === selectedLesson.quiz!.correctIndex;
-                    const showIncorrect = quizSubmitted && isSelected && !quizSuccess;
-
-                    return (
-                      <button
-                        key={idx}
-                        disabled={quizSubmitted}
-                        onClick={() => setSelectedOption(idx)}
-                        className={`text-right p-4 rounded-xl border text-sm transition-all duration-150 flex items-center justify-between gap-4 font-medium ${
-                          showCorrect
-                            ? "bg-emerald-500/10 border-emerald-500 text-emerald-300"
-                            : showIncorrect
-                            ? "bg-rose-500/10 border-rose-500 text-rose-300"
-                            : isSelected
-                            ? "bg-indigo-600/20 border-indigo-500 text-indigo-300"
-                            : "bg-[#131b2e] border-white/5 hover:border-white/10 text-slate-300"
-                        }`}
-                      >
-                        <span>{option}</span>
-                        {showCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Submit quiz action */}
-              <div className="flex items-center justify-between gap-4 pt-4 border-t border-white/5">
-                {quizSubmitted ? (
-                  <div className="flex items-center gap-2">
-                    {quizSuccess ? (
-                      <p className="text-emerald-400 text-sm font-bold flex items-center gap-1">
-                        <Award className="w-4 h-4" />
-                        <span>إجابة صحيحة وممتازة! أحسنت.</span>
-                      </p>
-                    ) : (
-                      <div className="flex items-center gap-3">
-                        <p className="text-rose-400 text-sm font-semibold">إجابة خاطئة، حاول مرة أخرى!</p>
-                        <button
-                          onClick={resetQuiz}
-                          className="text-xs text-indigo-400 hover:text-white flex items-center gap-1 underline"
-                        >
-                          <RefreshCw className="w-3 h-3" />
-                          <span>إعادة المحاولة</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
+                return (
                   <button
-                    id="submit-quiz-btn"
-                    onClick={handleQuizSubmit}
-                    disabled={selectedOption === null}
-                    className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      selectedOption !== null
-                        ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
-                        : "bg-slate-800 text-slate-500 border-white/5 cursor-not-allowed"
+                    key={lesson.id}
+                    onClick={() => handleLessonChange(lesson, idx)}
+                    className={`w-full text-right p-3.5 rounded-xl transition-all duration-200 flex items-center justify-between gap-3 border cursor-pointer ${
+                      isSelected
+                        ? "bg-indigo-600/15 border-indigo-500 text-white shadow-sm"
+                        : isLocked
+                        ? "bg-[#131b2e]/20 border-transparent text-slate-500 hover:bg-[#131b2e]/40"
+                        : "bg-[#131b2e]/40 border-transparent text-slate-300 hover:bg-[#131b2e] hover:border-white/5"
                     }`}
                   >
-                    إرسال الإجابة
+                    <div className="space-y-1 overflow-hidden">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                          #{idx + 1}
+                        </span>
+                        <p className={`text-xs sm:text-sm font-bold leading-snug truncate ${
+                          isSelected ? "text-indigo-300" : isLocked ? "text-slate-500" : "text-slate-200"
+                        }`}>
+                          {lesson.titleAr}
+                        </p>
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-mono ltr-dir">{lesson.duration}</p>
+                    </div>
+                    
+                    {lessonDone ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    ) : isLocked ? (
+                      <div className="p-1 rounded bg-slate-800/80 text-amber-400 shrink-0" title={is5PctLocked ? "يتطلب تصريح 5%" : "يجب إكمال الدرس السابق أولاً"}>
+                        <Lock className="w-3.5 h-3.5" />
+                      </div>
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border-2 border-slate-600 shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Access request button if restricted */}
+            {!isAdmin && accessLevel === "restricted_5pct" && (
+              <div className="pt-3 border-t border-white/5">
+                <button
+                  onClick={() => setShowRequestModal(true)}
+                  className="w-full py-2.5 px-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Lock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>طلب فتح باقي الكورس (100%)</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Right columns: Main lesson workspace */}
+          <div className="lg:col-span-2 space-y-6">
+            
+            {/* CHECK 1: SEQUENTIAL LESSON LOCK SCREEN */}
+            {isLessonSequentiallyLocked ? (
+              <div className="bg-[#0f172a] border border-amber-500/30 rounded-2xl p-8 sm:p-12 text-center space-y-5 shadow-xl">
+                <div className="w-14 h-14 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center mx-auto">
+                  <Lock className="w-7 h-7" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg sm:text-xl font-bold text-white">المحاضرة مقفلة بالترتيب الأكاديمي</h3>
+                  <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+                    يجب عليك أولاً إكمال واجتياز المحاضرة السابقة: <span className="text-indigo-400 font-bold">"{prevLessonObj?.titleAr}"</span> لفتح هذه المحاضرة.
+                  </p>
+                </div>
+                {prevLessonObj && (
+                  <button
+                    onClick={() => {
+                      setSelectedLesson(prevLessonObj);
+                      resetQuiz();
+                    }}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer inline-flex items-center gap-2"
+                  >
+                    <span>الذهاب إلى {prevLessonObj.titleAr}</span>
+                    <ArrowLeft className="w-3.5 h-3.5" />
                   </button>
                 )}
-
-                <span className="text-xs text-slate-500">سؤال تفاعلي واحد لتأكيد استيعابك للمعلومات</span>
               </div>
-            </div>
-          )}
+            ) : 
+
+            /* CHECK 2: 5% CONTENT RESTRICTION SCREEN */
+            isLessonRestricted5Pct ? (
+              <div className="bg-[#0f172a] border-2 border-indigo-500/30 rounded-2xl p-8 sm:p-12 text-center space-y-6 shadow-2xl">
+                <div className="w-16 h-16 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto">
+                  <Lock className="w-8 h-8" />
+                </div>
+                <div className="space-y-3">
+                  <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-bold rounded-full">
+                    محتوى مقفل - عينة الـ 5%
+                  </span>
+                  <h3 className="text-xl font-bold text-white">يتطلب هذا الدرس تصريحاً من المشرف العام</h3>
+                  <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+                    بموجب سياسة الأكاديمية، يُسمح لك بمشاهدة عينة 5% (المحاضرة التمهيدية). لإكمال باقي الكورس ومشاهدة هذا الدرس، يرجى تقديم طلب للأستاذ <span className="text-indigo-400 font-bold">عبدالوهاب أحمد</span> لتفعيل الصلاحية الكاملة لحسابك.
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => setShowRequestModal(true)}
+                    className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs sm:text-sm transition-all shadow-lg shadow-indigo-600/25 inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>طلب فتح الكورس بالكامل (100%) من الأدمن</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+
+            /* UNLOCKED & ACCESSIBLE LESSON VIEW */
+            <>
+              {/* Video Player Display with Anti-Redirect Protection */}
+              <div className="bg-[#0f172a] border border-white/5 rounded-2xl overflow-hidden shadow-xl relative select-none" onContextMenu={(e) => e.preventDefault()}>
+                
+                {/* Security Header Bar */}
+                <div className="bg-[#0a0f1d] px-4 py-2 flex items-center justify-between border-b border-white/5">
+                  <div className="flex items-center gap-2 text-[11px] text-slate-400 font-medium">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>مشغل الفيديو الأكاديمي المحمي (ممنوع التحميل أو مغادرة المنصة)</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                    Zakora-TC Player
+                  </span>
+                </div>
+
+                {selectedLesson.youtubeId ? (
+                  <div className="aspect-video w-full relative bg-black overflow-hidden group">
+                    {/* YouTube Embedded Iframe with strict restrictions */}
+                    <iframe
+                      id={`youtube-iframe-${selectedLesson.id}`}
+                      src={`https://www.youtube.com/embed/${selectedLesson.youtubeId}?modestbranding=1&rel=0&iv_load_policy=3&disablekb=0&playsinline=1&controls=1&showinfo=0`}
+                      title={selectedLesson.titleAr}
+                      className="w-full h-full border-0 absolute inset-0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                    
+                    {/* Anti-Click Shield on Top Bar: Blocks clicks to YouTube logo / channel link / title */}
+                    <div 
+                      className="absolute top-0 inset-x-0 h-12 z-20 pointer-events-auto cursor-default bg-transparent"
+                      title="محمي من الروابط الخارجية"
+                    />
+                  </div>
+                ) : (
+                  <div className="aspect-video bg-indigo-950/20 flex flex-col items-center justify-center p-8 text-center gap-3">
+                    <Play className="w-12 h-12 text-indigo-400" />
+                    <p className="text-slate-300 font-bold text-sm">لم يتم إدراج فيديو لهذه المحاضرة بعد</p>
+                  </div>
+                )}
+                
+                {/* Lesson details bar */}
+                <div className="p-6 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <h3 className="text-lg sm:text-xl font-bold text-white mb-1">{selectedLesson.titleAr}</h3>
+                      <p className="text-xs text-slate-500 ltr-dir">{selectedLesson.title}</p>
+                    </div>
+                    
+                    <button
+                      id="complete-lesson-btn"
+                      onClick={handleCompleteToggle}
+                      className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1.5 shrink-0 border cursor-pointer ${
+                        isCompleted
+                          ? "bg-emerald-600/20 border-emerald-500 text-emerald-300"
+                          : "bg-[#1e293b] border-white/10 text-slate-300 hover:text-white hover:border-indigo-500/50"
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>{isCompleted ? "مكتمل (تمت الإضافة) ✓" : "تحديد كمكتمل لفتح الدرس القادم"}</span>
+                    </button>
+                  </div>
+
+                  <div className="border-t border-white/5 pt-4">
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">ملخص المحتوى العلمي</h4>
+                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-medium">
+                      {selectedLesson.summaryAr}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Lesson Quiz Component */}
+              {selectedLesson.quiz && (
+                <div className="bg-[#0f172a] border border-white/5 rounded-2xl p-6 sm:p-8 space-y-6 shadow-xl">
+                  <div className="flex items-center gap-2.5 pb-4 border-b border-white/5">
+                    <HelpCircle className="w-5 h-5 text-indigo-400" />
+                    <h3 className="text-sm sm:text-md font-bold text-white">اختبر فهمك للمحاضرة (+15 نقطة)</h3>
+                  </div>
+
+                  <div className="space-y-4">
+                    <p className="text-sm sm:text-base font-semibold text-slate-200 leading-relaxed">
+                      {selectedLesson.quiz.questionAr}
+                    </p>
+
+                    <div className="grid grid-cols-1 gap-3">
+                      {selectedLesson.quiz.options.map((option, idx) => {
+                        const isSelected = selectedOption === idx;
+                        const showCorrect = quizSubmitted && idx === selectedLesson.quiz!.correctIndex;
+                        const showIncorrect = quizSubmitted && isSelected && !quizSuccess;
+
+                        return (
+                          <button
+                            key={idx}
+                            disabled={quizSubmitted}
+                            onClick={() => setSelectedOption(idx)}
+                            className={`text-right p-4 rounded-xl border text-xs sm:text-sm transition-all duration-150 flex items-center justify-between gap-4 font-medium cursor-pointer ${
+                              showCorrect
+                                ? "bg-emerald-500/10 border-emerald-500 text-emerald-300"
+                                : showIncorrect
+                                ? "bg-rose-500/10 border-rose-500 text-rose-300"
+                                : isSelected
+                                ? "bg-indigo-600/20 border-indigo-500 text-indigo-300"
+                                : "bg-[#131b2e] border-white/5 hover:border-white/10 text-slate-300"
+                            }`}
+                          >
+                            <span>{option}</span>
+                            {showCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Submit quiz action */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-white/5">
+                    {quizSubmitted ? (
+                      <div className="flex items-center gap-2">
+                        {quizSuccess ? (
+                          <p className="text-emerald-400 text-xs sm:text-sm font-bold flex items-center gap-1">
+                            <Award className="w-4 h-4" />
+                            <span>إجابة صحيحة وممتازة! أحسنت، تم منحك 15 نقطة.</span>
+                          </p>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <p className="text-rose-400 text-xs sm:text-sm font-semibold">إجابة خاطئة، حاول مرة أخرى!</p>
+                            <button
+                              onClick={resetQuiz}
+                              className="text-xs text-indigo-400 hover:text-white flex items-center gap-1 underline cursor-pointer"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              <span>إعادة المحاولة</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        id="submit-quiz-btn"
+                        onClick={handleQuizSubmit}
+                        disabled={selectedOption === null}
+                        className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          selectedOption !== null
+                            ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
+                            : "bg-slate-800 text-slate-500 border-white/5 cursor-not-allowed"
+                        }`}
+                      >
+                        إرسال الإجابة
+                      </button>
+                    )}
+
+                    <span className="text-[11px] text-slate-500">سؤال تفاعلي لتأكيد استيعابك للمحاضرة</span>
+                  </div>
+                </div>
+              )}
+            </>
+            )}
+
+          </div>
 
         </div>
+      )}
 
-      </div>
+      {/* REQUEST 100% ACCESS MODAL */}
+      <AnimatePresence>
+        {showRequestModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 rtl-dir">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#0f172a] border border-indigo-500/30 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl relative"
+            >
+              <div className="flex justify-between items-center pb-3 border-b border-white/10">
+                <h3 className="text-md font-bold text-white flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-indigo-400" />
+                  <span>طلب فتح كامل محتوى الدورة (100%)</span>
+                </h3>
+                <button 
+                  onClick={() => setShowRequestModal(false)}
+                  className="text-slate-400 hover:text-white text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {requestSent ? (
+                <div className="py-6 text-center space-y-3">
+                  <div className="w-12 h-12 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
+                    <Check className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-white font-bold text-base">تم إرسال طلبك بنجاح!</h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    تم تسجيل طلبك لدى الأستاذ عبدالوهاب أحمد. سيتم مراجعة حسابك وتفعيل الصلاحية الكاملة في أقرب وقت.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setShowRequestModal(false);
+                      setRequestSent(false);
+                    }}
+                    className="px-6 py-2 bg-[#1e293b] text-white rounded-xl text-xs font-bold hover:bg-[#28384f]"
+                  >
+                    إغلاق
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    طلب إذن الوصول الكامل لكورس <span className="text-indigo-400 font-bold">"{activeCourse.titleAr}"</span> لصالح البريد: <span className="text-white font-mono font-semibold">{userEmail}</span>.
+                  </p>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+                      ملاحظة أو رسالة للأستاذ عبدالوهاب (اختياري):
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={requestNotes}
+                      onChange={(e) => setRequestNotes(e.target.value)}
+                      placeholder="أرغب في إكمال هذا الكورس لتعلم علوم الحاسوب وتطبيقات الويب..."
+                      className="w-full bg-[#131b2e] border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSendAccessRequest}
+                      className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer"
+                    >
+                      إرسال الطلب الآن
+                    </button>
+                    <button
+                      onClick={() => setShowRequestModal(false)}
+                      className="px-4 py-3 bg-[#1e293b] text-slate-300 font-bold rounded-xl text-xs hover:bg-[#28384f]"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
