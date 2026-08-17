@@ -17,7 +17,8 @@ import { cs50Course, sqlCourse, sqlChallenges, jobPositions } from "./data";
 
 import { 
   Music, Volume2, VolumeX, Mail, Phone, MapPin, 
-  Sparkles, CheckCircle2, ChevronLeft 
+  Sparkles, CheckCircle2, ChevronLeft, Lock, ShieldAlert,
+  LogIn, X
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -26,7 +27,17 @@ export default function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [avatar, setAvatar] = useState<string>("💻");
   const [userPoints, setUserPoints] = useState<number>(50);
+  const [isGuest, setIsGuest] = useState<boolean>(() => localStorage.getItem("user_is_guest") === "true");
+  const [userAccessLevel, setUserAccessLevel] = useState<"full" | "restricted_5pct" | "blocked">(() => {
+    return (localStorage.getItem("user_access_level") as any) || "restricted_5pct";
+  });
+  const [activeCourseId, setActiveCourseId] = useState<string | null>(() => {
+    return localStorage.getItem("user_active_course") || null;
+  });
+
   const [currentView, setCurrentView] = useState<string>("home");
+  const [showGuestLockModal, setShowGuestLockModal] = useState<boolean>(false);
+  const [showLoginModalForGoogle, setShowLoginModalForGoogle] = useState<boolean>(false);
 
   // Core learning progress states
   const [completedLessons, setCompletedLessons] = useState<string[]>([]);
@@ -84,11 +95,6 @@ export default function App() {
     localStorage.setItem("platform_courses_v2", JSON.stringify(updated));
   };
 
-  const handleUpdateCourse = (courseId: string, updatedCourse: any) => {
-    const updated = coursesState.map(c => c.id === courseId ? updatedCourse : c);
-    handleUpdateCourses(updated);
-  };
-
   const handleUpdateChallenges = (updated: any) => {
     setChallengesState(updated);
     localStorage.setItem("sql_challenges_list", JSON.stringify(updated));
@@ -104,13 +110,37 @@ export default function App() {
     localStorage.setItem("site_settings", JSON.stringify(updated));
   };
 
+  // Sync access level from server for this user email
+  const syncUserAccessFromServer = async (email: string) => {
+    try {
+      const res = await fetch("/api/visitors");
+      if (res.ok) {
+        const list = await res.json();
+        const found = list.find((v: any) => v.email.toLowerCase() === email.toLowerCase());
+        if (found) {
+          setUserAccessLevel(found.accessLevel || "restricted_5pct");
+          localStorage.setItem("user_access_level", found.accessLevel || "restricted_5pct");
+          if (found.activeCourseId) {
+            setActiveCourseId(found.activeCourseId);
+            localStorage.setItem("user_active_course", found.activeCourseId);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Could not sync access level from server:", e);
+    }
+  };
+
   // Load state from local storage on component mount
   useEffect(() => {
     const savedUser = localStorage.getItem("username");
     if (savedUser) {
       setUsername(savedUser);
       setAvatar(localStorage.getItem("user_avatar") || "💻");
-      setUserEmail(localStorage.getItem("user_email") || "student@zakora.tc");
+      const email = localStorage.getItem("user_email") || "student@zakora.tc";
+      setUserEmail(email);
+      const isG = localStorage.getItem("user_is_guest") === "true";
+      setIsGuest(isG);
       
       const pts = localStorage.getItem("user_points");
       setUserPoints(pts ? parseInt(pts, 10) : 50);
@@ -123,13 +153,18 @@ export default function App() {
 
       const sp = localStorage.getItem("solved_problems");
       if (sp) setSolvedProblems(JSON.parse(sp));
+
+      const ac = localStorage.getItem("user_active_course");
+      if (ac) setActiveCourseId(ac);
+
+      // Sync with server
+      syncUserAccessFromServer(email);
     }
   }, []);
 
   // Safe Web Audio Synthesizer to play soft ambient background sound
   const toggleBackgroundMusic = () => {
     if (isPlayingMusic) {
-      // Stop the synth
       if (oscillator) {
         try {
           oscillator.stop();
@@ -138,12 +173,10 @@ export default function App() {
       }
       setIsPlayingMusic(false);
     } else {
-      // Start a beautiful gentle, low-pass ambient wave sound
       try {
         const ctx = audioContext || new (window.AudioContext || (window as any).webkitAudioContext)();
         if (!audioContext) setAudioContext(ctx);
 
-        // Resume context if suspended
         if (ctx.state === "suspended") {
           ctx.resume();
         }
@@ -152,10 +185,8 @@ export default function App() {
         const gain = ctx.createGain();
 
         osc.type = "sine";
-        // Deep low frequency frequency for soothing studying background (like a soft hum/chord)
-        osc.frequency.setValueAtTime(110, ctx.currentTime); // A2 note
+        osc.frequency.setValueAtTime(110, ctx.currentTime);
 
-        // Soft volume envelope
         gain.gain.setValueAtTime(0.04, ctx.currentTime);
 
         osc.connect(gain);
@@ -172,7 +203,6 @@ export default function App() {
     }
   };
 
-  // Clean up synth on unmount
   useEffect(() => {
     return () => {
       if (oscillator) {
@@ -184,10 +214,24 @@ export default function App() {
   }, [oscillator]);
 
   // Handle successful login
-  const handleLoginSuccess = (name: string, email: string, avatarChar: string) => {
+  const handleLoginSuccess = (name: string, email: string, avatarChar: string, guestMode: boolean) => {
     setUsername(name);
     setUserEmail(email);
     setAvatar(avatarChar);
+    setIsGuest(guestMode);
+    setShowLoginModalForGoogle(false);
+    
+    const eLower = email.toLowerCase();
+    const isAdmin = eLower.includes("abdelwahab") || 
+                    eLower.includes("hagag") ||
+                    eLower === "zakora.tc.admin@gmail.com" || 
+                    eLower.includes("admin") ||
+                    eLower.endsWith("@zakora.tc");
+
+    const access = isAdmin ? "full" : "restricted_5pct";
+    setUserAccessLevel(access);
+    localStorage.setItem("user_access_level", access);
+
     setUserPoints(50);
     setCompletedLessons([]);
     setCompletedNodes([]);
@@ -200,13 +244,15 @@ export default function App() {
     localStorage.removeItem("username");
     localStorage.removeItem("user_avatar");
     localStorage.removeItem("user_email");
+    localStorage.removeItem("user_is_guest");
+    localStorage.removeItem("user_access_level");
+    localStorage.removeItem("user_active_course");
     localStorage.removeItem("user_points");
     localStorage.removeItem("completed_lessons");
     localStorage.removeItem("completed_roadmap");
     localStorage.removeItem("solved_problems");
     localStorage.removeItem("admin_unlocked");
     
-    // Stop music if playing
     if (oscillator) {
       try {
         oscillator.stop();
@@ -217,6 +263,7 @@ export default function App() {
 
     setUsername(null);
     setUserEmail(null);
+    setIsGuest(false);
     setCurrentView("home");
   };
 
@@ -225,6 +272,18 @@ export default function App() {
     const newPts = userPoints + points;
     setUserPoints(newPts);
     localStorage.setItem("user_points", newPts.toString());
+  };
+
+  const handleSetActiveCourse = (courseId: string) => {
+    setActiveCourseId(courseId);
+    localStorage.setItem("user_active_course", courseId);
+    if (userEmail) {
+      fetch("/api/visitors/update-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail, activeCourseId: courseId })
+      }).catch(e => console.warn(e));
+    }
   };
 
   const handleToggleLesson = (lessonId: string, pointsChange: number) => {
@@ -259,23 +318,31 @@ export default function App() {
     handleAddPoints(pointsReward);
   };
 
-  // Navigates and auto-scrolls to top
+  // Navigates and auto-scrolls to top with GUEST PROTECTION RULE
   const handleNavigate = (view: string) => {
+    // Guest Restriction Check: Guests can only access "home"
+    if (isGuest && view !== "home" && view !== "about") {
+      setShowGuestLockModal(true);
+      return;
+    }
     setCurrentView(view);
-    setSearchQuery(""); // Clear search on navigation
+    setSearchQuery("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    // If we have query, we can open either a course search filter, or we search on home
     if (query.trim()) {
-      setCurrentView("learn");
+      if (isGuest) {
+        setShowGuestLockModal(true);
+      } else {
+        setCurrentView("learn");
+      }
     }
   };
 
   // If user is not logged in, intercept and show the login page
-  if (!username) {
+  if (!username || showLoginModalForGoogle) {
     return <LoginModal onLoginSuccess={handleLoginSuccess} />;
   }
 
@@ -308,6 +375,10 @@ export default function App() {
             onAddPoints={handleAddPoints}
             initialCourseId="cs50"
             courses={coursesState}
+            userEmail={userEmail || ""}
+            accessLevel={userAccessLevel}
+            activeCourseId={activeCourseId}
+            onSetActiveCourse={handleSetActiveCourse}
           />
         );
       case "sql-course":
@@ -318,6 +389,10 @@ export default function App() {
             onAddPoints={handleAddPoints}
             initialCourseId="sql"
             courses={coursesState}
+            userEmail={userEmail || ""}
+            accessLevel={userAccessLevel}
+            activeCourseId={activeCourseId}
+            onSetActiveCourse={handleSetActiveCourse}
           />
         );
       case "learn":
@@ -327,6 +402,10 @@ export default function App() {
             onToggleLesson={handleToggleLesson}
             onAddPoints={handleAddPoints}
             courses={coursesState}
+            userEmail={userEmail || ""}
+            accessLevel={userAccessLevel}
+            activeCourseId={activeCourseId}
+            onSetActiveCourse={handleSetActiveCourse}
           />
         );
       case "roadmap":
@@ -401,6 +480,22 @@ export default function App() {
           onLogout={handleLogout}
           onSearch={handleSearch}
         />
+
+        {/* Guest Notification Banner on Top if user is Guest */}
+        {isGuest && (
+          <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-center text-xs text-amber-300 rtl-dir font-medium flex items-center justify-center gap-2">
+            <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span>
+              أنت تتصفح الآن بصيغة <span className="font-bold text-white">زائر (تصفح الصفحة الرئيسية فقط)</span>. لمشاهدة الكورسات وحل التحديات،{" "}
+              <button 
+                onClick={() => setShowLoginModalForGoogle(true)} 
+                className="underline font-bold text-amber-200 hover:text-white cursor-pointer"
+              >
+                سجّل الدخول بحساب Google
+              </button>
+            </span>
+          </div>
+        )}
 
         {/* Back to Home Navigation Button (Only shown when not on home) */}
         {currentView !== "home" && (
@@ -511,6 +606,62 @@ export default function App() {
         </footer>
 
       </div>
+
+      {/* GUEST ACCESS RESTRICTION MODAL */}
+      <AnimatePresence>
+        {showGuestLockModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 rtl-dir">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#0f172a] border-2 border-amber-500/40 rounded-3xl max-w-md w-full p-6 sm:p-8 space-y-5 shadow-2xl text-center relative overflow-hidden"
+            >
+              <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center mx-auto">
+                <Lock className="w-8 h-8" />
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-white">حساب زائر (مقيّد بالرئيسية فقط)</h3>
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                  عزيزي الزائر، محتوى الكورسات والمحاضرات والتحديات التفاعلية والشهادات مخصص للطلاب المسجلين بحساب <span className="text-indigo-400 font-bold">Google</span> رسمي.
+                </p>
+              </div>
+
+              <div className="p-4 bg-[#131b2e] border border-white/5 rounded-2xl text-right text-xs text-slate-400 space-y-1.5">
+                <div className="flex items-center gap-2 text-white font-semibold">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>حفظ تقدمك الدراسي وشهاداتك تلقائياً</span>
+                </div>
+                <div className="flex items-center gap-2 text-white font-semibold">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>متابعة شخصية من الأستاذ عبدالوهاب</span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2.5 pt-2">
+                <button
+                  onClick={() => {
+                    setShowGuestLockModal(false);
+                    setShowLoginModalForGoogle(true);
+                  }}
+                  className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs sm:text-sm transition-all shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>تسجيل الدخول بحساب Google الآن</span>
+                </button>
+                <button
+                  onClick={() => setShowGuestLockModal(false)}
+                  className="w-full py-2.5 bg-[#131b2e] hover:bg-[#1a253f] text-slate-400 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  البقاء في الصفحة الرئيسية
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }
