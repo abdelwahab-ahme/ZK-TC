@@ -353,14 +353,11 @@ export default function AdminPanel({
   const isAdminEmail = (email: string) => {
     if (!email) return false;
     const e = email.toLowerCase();
-    return e.includes("abdelwahab") || 
-           e.includes("hagag") ||
-           e === "zakora.tc.admin@gmail.com" || 
-           e.includes("admin") || 
+    return e === "zakora.tc.admin@gmail.com" ||  
            e.endsWith("@zakora.tc") ||
            localStorage.getItem("admin_unlocked") === "true";
   };
-    // Google Admin Authorization Guard (Secured externally based on Google login email)
+  // Google Admin Authorization Guard (Secured externally based on Google login email)
   const isAuthorizedAdmin = isAdminEmail(userEmail);
 
   if (!isAuthorizedAdmin) {
@@ -442,8 +439,8 @@ export default function AdminPanel({
               • البريد الحالي: <span className="text-indigo-400 font-mono font-bold">{userEmail || "مسؤول النظام"}</span>
             </p>
             <p className="text-slate-500">
-              • برجاء ادخال رمز المرور السري الافتراضي:
-              </p>
+              •برجاء ادخال رمز المرور السري الافتراضي
+            </p>
           </div>
         </div>
       </div>
