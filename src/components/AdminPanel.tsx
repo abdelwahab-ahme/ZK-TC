@@ -120,7 +120,7 @@ export default function AdminPanel({
       setPinError("");
       localStorage.setItem("admin_unlocked", "true");
     } else {
-      setPinError("رمز المرور خاطئ! الرجاء إدخال الرمز الصحيح");
+      setPinError("رمز المرور خاطئ! الرجاء إدخال الرمز الصحيح ");
     }
   };
 
@@ -353,9 +353,10 @@ export default function AdminPanel({
   const isAdminEmail = (email: string) => {
     if (!email) return false;
     const e = email.toLowerCase();
-    return 
+    return e.includes("abdelwahab") || 
+           e.includes("hagag") ||
            e === "zakora.tc.admin@gmail.com" || 
-           e.includes(".admin@") || 
+           e.includes("admin") || 
            e.endsWith("@zakora.tc") ||
            localStorage.getItem("admin_unlocked") === "true";
   };
@@ -388,7 +389,7 @@ export default function AdminPanel({
           </div>
 
           <p className="text-[10px] text-slate-500 leading-normal">
-             يرجى تسجيل الخروج والدخول مجدداً باستخدام حساب Google الصحيح والمصرح له لتتمكن من إدارة المنصة وتعديل المحتوى.
+             يرجى تسجيل الخروج والدخول مجدداً باستخدام حساب Google الصحيح والمصرح له 
           </p>
         </div>
       </div>
@@ -441,8 +442,8 @@ export default function AdminPanel({
               • البريد الحالي: <span className="text-indigo-400 font-mono font-bold">{userEmail || "مسؤول النظام"}</span>
             </p>
             <p className="text-slate-500">
-              • برجاء ادخال رمز المرور السري الافتراضي 
-            </p>
+              • برجاء ادخال رمز المرور السري الافتراضي:
+              </p>
           </div>
         </div>
       </div>
