@@ -117,9 +117,10 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
       // Special override for teacher/admin
       let avatarChar = "🎓";
       const eLower = email.toLowerCase();
-      const isAdmin = eLower === "abdelwahabhagag3@gmail.com" || 
+      const isAdmin = eLower.includes("abdelwahab") || 
+                      eLower.includes("hagag") ||
                       eLower === "zakora.tc.admin@gmail.com" || 
-                      eLower.includes(".admin@") ||
+                      eLower.includes("admin") ||
                       eLower.endsWith("@zakora.tc");
 
       if (isAdmin) {
@@ -267,7 +268,7 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
 
                 <div className="text-right">
                   <p className="text-[10px] text-slate-500 leading-normal">
-                      لتجربة الدخول بصلاحيات الأدمن كاملة وتأمين اللوحة خارجياً، يرجى كتابة بريدك الإلكتروني  
+                   لتجربة الدخول بصلاحيات الأدمن كاملة وتأمين اللوحة خارجياً، يرجى كتابة بريدك الإلكتروني  
                   </p>
                 </div>
 
