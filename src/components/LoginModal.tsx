@@ -27,7 +27,7 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
 
   const logVisitorToServer = async (name: string, email: string, avatar: string, isGuest: boolean) => {
     try {
-      await fetch("/api/visitors/log", {
+      const res = await fetch("/api/visitors/log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -38,12 +38,21 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
           points: 50
         })
       });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.visitor && data.visitor.accessLevel) {
+          localStorage.setItem("user_access_level", data.visitor.accessLevel);
+          if (data.visitor.activeCourseId) {
+            localStorage.setItem("user_active_course", data.visitor.activeCourseId);
+          }
+        }
+      }
     } catch (e) {
       console.warn("Could not sync visitor to server:", e);
     }
   };
 
-  const handleCustomSubmit = (e: React.FormEvent) => {
+  const handleCustomSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = usernameInput.trim();
     if (!name) {
@@ -68,7 +77,7 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
       localStorage.setItem("user_points", "50");
     }
 
-    logVisitorToServer(name, guestEmail, selectedAvatar, true);
+    await logVisitorToServer(name, guestEmail, selectedAvatar, true);
     onLoginSuccess(name, guestEmail, selectedAvatar, true);
   };
 
@@ -98,7 +107,7 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
     setGoogleError("");
 
     // Simulate Google Authentication check
-    setTimeout(() => {
+    setTimeout(async () => {
       setIsLoading(false);
       
       // Determine user name from email prefix
@@ -108,7 +117,7 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
       // Special override for teacher/admin
       let avatarChar = "🎓";
       const eLower = email.toLowerCase();
-      const isAdmin = eLower.includes("abdelwahabhagag") || 
+      const isAdmin = eLower.includes("abdelwahab") || 
                       eLower.includes("hagag") ||
                       eLower === "zakora.tc.admin@gmail.com" || 
                       eLower.includes("admin") ||
@@ -134,9 +143,9 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
         localStorage.setItem("user_points", "50");
       }
 
-      logVisitorToServer(displayName, email.toLowerCase(), avatarChar, false);
+      await logVisitorToServer(displayName, email.toLowerCase(), avatarChar, false);
       onLoginSuccess(displayName, email.toLowerCase(), avatarChar, false);
-    }, 1000);
+    }, 600);
   };
 
   return (
@@ -257,7 +266,11 @@ export default function LoginModal({ onLoginSuccess }: LoginProps) {
                   <p className="text-rose-500 text-xs text-right font-semibold">{googleError}</p>
                 )}
 
-                
+                <div className="text-right">
+                  <p className="text-[10px] text-slate-500 leading-normal">
+                    * ملاحظة للأدمن: لتجربة الدخول بصلاحيات الأدمن كاملة وتأمين اللوحة خارجياً، يرجى كتابة بريدك الإلكتروني كـ <span className="text-indigo-400 font-bold font-mono">abdelwahabhagag.ml2pg@gmail.com</span> أو أي بريد يحتوي كلمة <span className="text-indigo-400 font-bold font-mono">admin</span>.
+                  </p>
+                </div>
 
                 <button
                   id="google-login-submit"
