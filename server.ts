@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 
 interface VisitorRecord {
@@ -18,8 +19,10 @@ interface VisitorRecord {
   notes?: string;
 }
 
-// In-memory data store with default seed records
-let visitorsDatabase: VisitorRecord[] = [
+const VISITORS_FILE_PATH = path.join(process.cwd(), "visitors_store.json");
+
+// Default initial seed records
+const defaultSeedVisitors: VisitorRecord[] = [
   {
     id: "admin_abdelwahab",
     name: "المهندس عبدالوهاب أحمد (المشرف العام)",
@@ -36,6 +39,21 @@ let visitorsDatabase: VisitorRecord[] = [
     notes: "مدير النظام وصاحب الأكاديمية"
   },
   {
+    id: "admin_abdelwahab_main",
+    name: "المهندس عبدالوهاب أحمد (الأدمن)",
+    email: "abdelwahabhagag3@gmail.com",
+    avatar: "🎓",
+    isGuest: false,
+    joinedAt: new Date(Date.now() - 20 * 86400000).toISOString(),
+    lastVisitAt: new Date().toISOString(),
+    visitCount: 65,
+    accessLevel: "full",
+    activeCourseId: null,
+    completedLessons: ["cs50-w0", "cs50-w1", "cs50-w2", "cs50-w3", "sql-01", "sql-02"],
+    points: 2500,
+    notes: "المشرف وصاحب المنصة"
+  },
+  {
     id: "student_ahmed",
     name: "أحمد علي محمود",
     email: "ahmed.ali.tech@gmail.com",
@@ -48,24 +66,51 @@ let visitorsDatabase: VisitorRecord[] = [
     activeCourseId: "cs50",
     completedLessons: ["cs50-w0", "cs50-w1"],
     points: 120,
-    notes: "طالب مجتهد تم منحه الصلاحية الكاملة"
+    notes: "طالب مجتهد تم منحه الصلاحية الكاملة 100%"
   },
   {
-    id: "guest_demo",
-    name: "زائر تجريبي 104",
-    email: "guest104@student.zakora.tc",
-    avatar: "🤖",
-    isGuest: true,
-    joinedAt: new Date(Date.now() - 1 * 86400000).toISOString(),
+    id: "student_sarah",
+    name: "سارة محمد إبراهيم",
+    email: "sarah.mohamed.dev@gmail.com",
+    avatar: "🌟",
+    isGuest: false,
+    joinedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
     lastVisitAt: new Date().toISOString(),
-    visitCount: 3,
+    visitCount: 4,
     accessLevel: "restricted_5pct",
-    activeCourseId: null,
-    completedLessons: [],
-    points: 50,
-    notes: "حساب زائر سريع مقيد بالرئيسية فقط"
+    activeCourseId: "cs50",
+    completedLessons: ["cs50-w0"],
+    points: 65,
+    notes: "طالبة جديدة - تصريح 5% (بانتظار الموافقة على 100%)"
   }
 ];
+
+// Helper: load from disk or create
+function loadVisitorsFromDisk(): VisitorRecord[] {
+  try {
+    if (fs.existsSync(VISITORS_FILE_PATH)) {
+      const data = fs.readFileSync(VISITORS_FILE_PATH, "utf-8");
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error("Error reading visitors from disk:", e);
+  }
+  return defaultSeedVisitors;
+}
+
+// Helper: save to disk
+function saveVisitorsToDisk(records: VisitorRecord[]) {
+  try {
+    fs.writeFileSync(VISITORS_FILE_PATH, JSON.stringify(records, null, 2), "utf-8");
+  } catch (e) {
+    console.error("Error saving visitors to disk:", e);
+  }
+}
+
+let visitorsDatabase: VisitorRecord[] = loadVisitorsFromDisk();
 
 let inquiriesDatabase: any[] = [];
 let jobApplicationsDatabase: any[] = [];
@@ -146,6 +191,7 @@ async function startServer() {
       };
 
       visitorsDatabase.unshift(newRecord);
+      saveVisitorsToDisk(visitorsDatabase);
       return res.json({ success: true, created: true, visitor: newRecord });
     }
   });
@@ -161,7 +207,31 @@ async function startServer() {
     const user = visitorsDatabase.find(v => v.email.toLowerCase() === normalizedEmail);
 
     if (!user) {
-      return res.status(404).json({ success: false, error: "User not found" });
+      // If user is not yet in visitorsDatabase, create them with specified access level
+      const isAdmin = normalizedEmail.includes("abdelwahab") || 
+                      normalizedEmail.includes("hagag") ||
+                      normalizedEmail === "zakora.tc.admin@gmail.com" ||
+                      normalizedEmail.includes("admin") ||
+                      normalizedEmail.endsWith("@zakora.tc");
+
+      const newRec: VisitorRecord = {
+        id: `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        name: normalizedEmail.split("@")[0],
+        email: normalizedEmail,
+        avatar: "🎓",
+        isGuest: false,
+        joinedAt: new Date().toISOString(),
+        lastVisitAt: new Date().toISOString(),
+        visitCount: 1,
+        accessLevel: accessLevel || (isAdmin ? "full" : "restricted_5pct"),
+        activeCourseId: activeCourseId || null,
+        completedLessons: [],
+        points: 50,
+        notes: notes || "طالب مسجل"
+      };
+      visitorsDatabase.unshift(newRec);
+      saveVisitorsToDisk(visitorsDatabase);
+      return res.json({ success: true, message: "تمت إضافة الطالب وتحديث صلاحياته بنجاح", user: newRec });
     }
 
     if (accessLevel && ["full", "restricted_5pct", "blocked"].includes(accessLevel)) {
@@ -174,6 +244,7 @@ async function startServer() {
       user.notes = notes;
     }
 
+    saveVisitorsToDisk(visitorsDatabase);
     res.json({ success: true, message: "تم تحديث الصلاحيات بنجاح", user });
   });
 
@@ -185,6 +256,7 @@ async function startServer() {
     }
 
     visitorsDatabase = visitorsDatabase.filter(v => v.email.toLowerCase() !== email.toLowerCase().trim());
+    saveVisitorsToDisk(visitorsDatabase);
     res.json({ success: true, message: "تم حذف السجل بنجاح" });
   });
 
