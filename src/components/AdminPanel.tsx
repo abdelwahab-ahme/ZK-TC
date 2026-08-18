@@ -120,7 +120,7 @@ export default function AdminPanel({
       setPinError("");
       localStorage.setItem("admin_unlocked", "true");
     } else {
-      setPinError("رمز المرور خاطئ! الرجاء إدخال الرمز الصحيح ");
+      setPinError("رمز المرور خاطئ! الرجاء إدخال الرمز الصحيح (zakora أو 123456)");
     }
   };
 
@@ -364,32 +364,53 @@ export default function AdminPanel({
   // Unlock prompt layout - if not unlocked yet, prompt for PIN
   if (!isUnlocked) {
     return (
-      <div className="py-20 px-4 max-w-lg mx-auto text-center rtl-dir">
-        <div className="bg-[#0f172a] border border-rose-500/30 rounded-2xl p-8 space-y-6 shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl pointer-events-none" />
+      <div className="py-20 px-4 max-w-md mx-auto text-center rtl-dir">
+        <div className="bg-[#0f172a] border border-white/10 rounded-2xl p-8 space-y-6 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-indigo-500/10 rounded-full blur-xl pointer-events-none" />
           
-          <div className="w-16 h-16 bg-rose-600/10 border border-rose-500/20 text-rose-400 rounded-full flex items-center justify-center mx-auto animate-pulse">
+          <div className="w-16 h-16 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 rounded-full flex items-center justify-center mx-auto">
             <Lock className="w-8 h-8" />
           </div>
 
-          <div className="space-y-3">
-            <h2 className="text-xl font-bold text-white">خطأ في الصلاحيات (حماية خارجية)</h2>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-white">لوحة الإدارة وتصاريح الطلاب</h2>
             <p className="text-xs text-slate-400 leading-relaxed">
-              عذراً، لوحة التحكم والإدارة مؤمنة خارجياً ومخصصة فقط للمهندس <span className="text-indigo-400 font-bold">عبدالوهاب أحمد</span> والمسؤولين المصرح لهم.
+              يرجى إدخال رمز المرور السري الخاص بالمهندس عبدالوهاب لإدارة المنصة والمحتوى وتصاريح الطلاب.
             </p>
-            <div className="p-3.5 bg-[#131b2e] border border-white/5 rounded-xl text-xs space-y-1.5 text-right w-full">
-              <p className="text-slate-400 font-semibold">
-                • بريدك الإلكتروني الحالي: <span className="text-rose-400 font-mono font-bold">{userEmail || "غير متوفر"}</span>
-              </p>
-              <p className="text-slate-500">
-                • نوع الحماية: <span className="text-indigo-400 font-semibold">تحقق خارجي وتفويض ثنائي بواسطة حسابات Google</span>
-              </p>
-            </div>
           </div>
 
-          <p className="text-[10px] text-slate-500 leading-normal">
-            * يرجى تسجيل الخروج والدخول مجدداً باستخدام حساب Google الصحيح والمصرح له لتتمكن من إدارة المنصة وتعديل المحتوى.
-          </p>
+          <form onSubmit={handleUnlock} className="space-y-4">
+            <div>
+              <input
+                id="admin-pin-input"
+                type="password"
+                placeholder="أدخل رمز المرور السري..."
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                className="w-full bg-[#131b2e] border border-white/10 rounded-xl px-4 py-3 text-sm text-center text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold"
+              />
+              {pinError && (
+                <p className="text-xs text-rose-400 mt-2 font-medium">{pinError}</p>
+              )}
+            </div>
+
+            <button
+              id="admin-unlock-submit"
+              type="submit"
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-lg shadow-indigo-600/20 cursor-pointer"
+            >
+              فك القفل والدخول للوحة الإدارة
+            </button>
+          </form>
+
+          <div className="p-3 bg-[#131b2e] border border-white/5 rounded-xl text-right text-[11px] space-y-1">
+            <p className="text-slate-400">
+              • البريد الحالي: <span className="text-indigo-400 font-mono font-bold">{userEmail || "مسؤول النظام"}</span>
+            </p>
+            <p className="text-slate-500">
+              • رمز المرور السري الافتراضي: <span className="text-emerald-400 font-bold font-mono">zakora</span> أو <span className="text-emerald-400 font-bold font-mono">123456</span>
+            </p>
+          </div>
         </div>
       </div>
     );
