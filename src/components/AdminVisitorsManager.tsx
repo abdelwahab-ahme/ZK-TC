@@ -51,6 +51,11 @@ export default function AdminVisitorsManager({
 
   useEffect(() => {
     fetchVisitors();
+    // Live auto-polling every 4 seconds so new students appear in real time
+    const interval = setInterval(() => {
+      fetchVisitors();
+    }, 4000);
+    return () => clearInterval(interval);
   }, []);
 
   // Update Access Level of a student
