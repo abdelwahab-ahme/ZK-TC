@@ -112,11 +112,48 @@ export default function App() {
 
   // Sync access level from server for this user email
   const syncUserAccessFromServer = async (email: string) => {
+    if (!email) return;
     try {
+      // First ensure user is logged on the server
+      const currentName = localStorage.getItem("username") || email.split("@")[0];
+      const currentAvatar = localStorage.getItem("user_avatar") || "💻";
+      const currentIsGuest = localStorage.getItem("user_is_guest") === "true";
+      const currentPts = parseInt(localStorage.getItem("user_points") || "50", 10);
+      const currentCourse = localStorage.getItem("user_active_course") || null;
+      const currentCompleted = JSON.parse(localStorage.getItem("completed_lessons") || "[]");
+
+      const logRes = await fetch("/api/visitors/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: currentName,
+          email: email.toLowerCase().trim(),
+          avatar: currentAvatar,
+          isGuest: currentIsGuest,
+          activeCourseId: currentCourse,
+          completedLessons: currentCompleted,
+          points: currentPts
+        })
+      });
+
+      if (logRes.ok) {
+        const data = await logRes.json();
+        if (data.visitor && data.visitor.accessLevel) {
+          setUserAccessLevel(data.visitor.accessLevel);
+          localStorage.setItem("user_access_level", data.visitor.accessLevel);
+          if (data.visitor.activeCourseId) {
+            setActiveCourseId(data.visitor.activeCourseId);
+            localStorage.setItem("user_active_course", data.visitor.activeCourseId);
+          }
+          return;
+        }
+      }
+
+      // Fallback: fetch visitors list
       const res = await fetch("/api/visitors");
       if (res.ok) {
         const list = await res.json();
-        const found = list.find((v: any) => v.email.toLowerCase() === email.toLowerCase());
+        const found = list.find((v: any) => v.email.toLowerCase() === email.toLowerCase().trim());
         if (found) {
           setUserAccessLevel(found.accessLevel || "restricted_5pct");
           localStorage.setItem("user_access_level", found.accessLevel || "restricted_5pct");
@@ -157,8 +194,18 @@ export default function App() {
       const ac = localStorage.getItem("user_active_course");
       if (ac) setActiveCourseId(ac);
 
-      // Sync with server
+      // Sync with server immediately
       syncUserAccessFromServer(email);
+
+      // Periodically sync every 5 seconds so permissions granted by admin take effect live
+      const syncInterval = setInterval(() => {
+        const currentStoredEmail = localStorage.getItem("user_email");
+        if (currentStoredEmail) {
+          syncUserAccessFromServer(currentStoredEmail);
+        }
+      }, 5000);
+
+      return () => clearInterval(syncInterval);
     }
   }, []);
 
