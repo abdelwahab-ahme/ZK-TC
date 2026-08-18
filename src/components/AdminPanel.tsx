@@ -389,7 +389,7 @@ export default function AdminPanel({
           </div>
 
           <p className="text-[10px] text-slate-500 leading-normal">
-            * يرجى تسجيل الخروج والدخول مجدداً باستخدام حساب Google الصحيح والمصرح له (مثال: <span className="text-indigo-400 font-bold font-mono">abdelwahabhagag.ml2pg@gmail.com</span>) لتتمكن من إدارة المنصة وتعديل المحتوى.
+             يرجى تسجيل الخروج والدخول مجدداً باستخدام حساب Google الصحيح والمصرح له لتتمكن من إدارة المنصة وتعديل المحتوى.
           </p>
         </div>
       </div>
