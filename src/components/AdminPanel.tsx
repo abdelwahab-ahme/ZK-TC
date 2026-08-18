@@ -360,6 +360,41 @@ export default function AdminPanel({
            e.endsWith("@zakora.tc") ||
            localStorage.getItem("admin_unlocked") === "true";
   };
+    // Google Admin Authorization Guard (Secured externally based on Google login email)
+  const isAuthorizedAdmin = isAdminEmail(userEmail);
+
+  if (!isAuthorizedAdmin) {
+    return (
+      <div className="py-20 px-4 max-w-lg mx-auto text-center rtl-dir">
+        <div className="bg-[#0f172a] border border-rose-500/30 rounded-2xl p-8 space-y-6 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl pointer-events-none" />
+          
+          <div className="w-16 h-16 bg-rose-600/10 border border-rose-500/20 text-rose-400 rounded-full flex items-center justify-center mx-auto animate-pulse">
+            <Lock className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-xl font-bold text-white">خطأ في الصلاحيات (حماية خارجية)</h2>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              عذراً، لوحة التحكم والإدارة مؤمنة خارجياً ومخصصة فقط للمهندس <span className="text-indigo-400 font-bold">عبدالوهاب أحمد</span> والمسؤولين المصرح لهم.
+            </p>
+            <div className="p-3.5 bg-[#131b2e] border border-white/5 rounded-xl text-xs space-y-1.5 text-right w-full">
+              <p className="text-slate-400 font-semibold">
+                • بريدك الإلكتروني الحالي: <span className="text-rose-400 font-mono font-bold">{userEmail || "غير متوفر"}</span>
+              </p>
+              <p className="text-slate-500">
+                • نوع الحماية: <span className="text-indigo-400 font-semibold">تحقق خارجي وتفويض ثنائي بواسطة حسابات Google</span>
+              </p>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-slate-500 leading-normal">
+            * يرجى تسجيل الخروج والدخول مجدداً باستخدام حساب Google الصحيح والمصرح له (مثال: <span className="text-indigo-400 font-bold font-mono">abdelwahabhagag.ml2pg@gmail.com</span>) لتتمكن من إدارة المنصة وتعديل المحتوى.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Unlock prompt layout - if not unlocked yet, prompt for PIN
   if (!isUnlocked) {
