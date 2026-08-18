@@ -30,22 +30,25 @@ export default function LearningCenter({
   activeCourseId,
   onSetActiveCourse
 }: LearningCenterProps) {
-  // Admin check
-  const isAdmin = userEmail.toLowerCase() === "abdelwahabhagag.ml2pg@gmail.com" || 
-                  userEmail.toLowerCase() === "zakora.tc.admin@gmail.com" || 
-                  userEmail.toLowerCase().includes("admin") ||
-                  accessLevel === "full";
+  // Teacher / Super Admin check
+  const eLower = userEmail.toLowerCase();
+  const isTeacherAdmin = eLower.includes("abdelwahab") || 
+                         eLower.includes("hagag") ||
+                         eLower === "zakora.tc.admin@gmail.com" || 
+                         eLower.includes("admin") ||
+                         eLower.endsWith("@zakora.tc");
+
+  const hasFullAccess = isTeacherAdmin || accessLevel === "full";
 
   // Safe initial course selection
   const getInitialCourse = (): Course => {
-    // If user has an active course they are enrolled in, prioritize it
-    if (activeCourseId) {
-      const activeFound = courses.find(c => c.id === activeCourseId);
-      if (activeFound) return activeFound;
-    }
     if (initialCourseId) {
       const found = courses.find(c => c.id === initialCourseId);
       if (found) return found;
+    }
+    if (activeCourseId) {
+      const activeFound = courses.find(c => c.id === activeCourseId);
+      if (activeFound) return activeFound;
     }
     return courses[0] || { id: "empty", title: "", titleAr: "دورة فارغة", description: "", descriptionAr: "", icon: "BookOpen", lessons: [] };
   };
@@ -90,40 +93,16 @@ export default function LearningCenter({
     return { completed: completedCount, total, percent, isFinished: completedCount === total };
   };
 
-  // Check if current user is currently locked into another course (Single Active Course Rule)
-  // Determine if there is an ongoing unfinished enrolled course
-  const currentEnrolledCourseId = activeCourseId || (function() {
-    // If not set explicitly, find if user has started lessons in any course
-    for (const c of courses) {
-      const started = c.lessons.some(l => completedLessons.includes(l.id));
-      const finished = c.lessons.length > 0 && c.lessons.every(l => completedLessons.includes(l.id));
-      if (started && !finished) return c.id;
-    }
-    return null;
-  })();
-
-  const userEnrolledCourse = courses.find(c => c.id === currentEnrolledCourseId);
-  const enrolledCourseProgress = userEnrolledCourse ? getCourseProgress(userEnrolledCourse) : null;
-  
-  // Can user access the currently viewed activeCourse?
-  // User cannot view a different course if they are currently enrolled in another course that is not 100% completed
-  const isCourseBlockedByEnrollment = !isAdmin && 
-    userEnrolledCourse && 
-    userEnrolledCourse.id !== activeCourse.id && 
-    enrolledCourseProgress && 
-    !enrolledCourseProgress.isFinished;
-
-  // Check 5% limitation
-  // If user is not admin and has restricted_5pct:
-  // Allowed lessons = Math.max(1, Math.ceil(activeCourse.lessons.length * 0.05)) (e.g. 1st lesson only)
-  const allowedLessons5Pct = Math.max(1, Math.ceil(activeCourse.lessons.length * 0.05));
+  // Check 5% limitation:
+  // For accounts with 5% restriction, only first 5% of lessons (e.g. 1st lesson) are viewable
+  const allowedLessons5Pct = Math.max(1, Math.ceil((activeCourse.lessons?.length || 1) * 0.05));
   
   const currentLessonIndex = activeCourse.lessons.findIndex(l => l.id === selectedLesson.id);
-  const isLessonRestricted5Pct = !isAdmin && (accessLevel === "restricted_5pct") && (currentLessonIndex >= allowedLessons5Pct);
+  const isLessonRestricted5Pct = !hasFullAccess && (currentLessonIndex >= allowedLessons5Pct);
 
-  // Check Sequential Lesson Lock
-  // Lesson at index i is unlocked only if index == 0 OR lesson[i-1] is completed in completedLessons
-  const isLessonSequentiallyLocked = !isAdmin && currentLessonIndex > 0 && (function() {
+  // Check Sequential Lesson Lock:
+  // Lesson at index i is unlocked if index == 0 OR previous lesson is completed in completedLessons
+  const isLessonSequentiallyLocked = !isTeacherAdmin && currentLessonIndex > 0 && (function() {
     const prevLesson = activeCourse.lessons[currentLessonIndex - 1];
     return !completedLessons.includes(prevLesson.id);
   })();
@@ -131,8 +110,7 @@ export default function LearningCenter({
   const prevLessonObj = currentLessonIndex > 0 ? activeCourse.lessons[currentLessonIndex - 1] : null;
 
   const handleCourseChange = (course: Course) => {
-    // If student isn't enrolled yet, enroll them in this course
-    if (!currentEnrolledCourseId && onSetActiveCourse) {
+    if (onSetActiveCourse) {
       onSetActiveCourse(course.id);
     }
     setActiveCourse(course);
@@ -141,15 +119,6 @@ export default function LearningCenter({
   };
 
   const handleLessonChange = (lesson: Lesson, index: number) => {
-    // Check sequential lock
-    if (!isAdmin && index > 0) {
-      const prevLesson = activeCourse.lessons[index - 1];
-      if (!completedLessons.includes(prevLesson.id)) {
-        setSelectedLesson(lesson);
-        resetQuiz();
-        return;
-      }
-    }
     setSelectedLesson(lesson);
     resetQuiz();
   };
@@ -224,11 +193,10 @@ export default function LearningCenter({
       </div>
 
       {/* Course Selector Tabs */}
-      <div className="flex justify-center gap-3 mb-8 flex-wrap">
+      <div className="flex justify-center gap-3 mb-6 flex-wrap">
         {courses.map(course => {
           const prog = getCourseProgress(course);
           const isSelected = activeCourse.id === course.id;
-          const isEnrolledCurrent = userEnrolledCourse?.id === course.id;
           
           return (
             <button
@@ -245,201 +213,189 @@ export default function LearningCenter({
                 <span className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] rounded-full">
                   مكتمل 100% ✓
                 </span>
-              ) : isEnrolledCurrent ? (
+              ) : (
                 <span className="px-2 py-0.5 bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-[10px] rounded-full">
-                  الكورس النشط ({prog.percent}%)
+                  {prog.percent}%
                 </span>
-              ) : null}
+              )}
             </button>
           );
         })}
       </div>
 
-      {/* SINGLE ACTIVE COURSE ENFORCEMENT BARRIER */}
-      {isCourseBlockedByEnrollment ? (
-        <motion.div 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-[#0f172a] border-2 border-amber-500/30 rounded-3xl p-8 sm:p-12 text-center max-w-2xl mx-auto shadow-2xl space-y-6"
-        >
-          <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center mx-auto">
-            <Lock className="w-8 h-8" />
+      {/* User Access Level Status Indicator Banner */}
+      {hasFullAccess ? (
+        <div className="mb-6 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-between gap-3 text-xs text-emerald-300">
+          <div className="flex items-center gap-2 font-bold">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>حالة تصريح حسابك: صلاحية كاملة (100%) - يمكنك حضور ومشاهدة جميع المحاضرات واجتياز الاختبارات</span>
           </div>
-
-          <div className="space-y-3">
-            <h3 className="text-xl sm:text-2xl font-bold text-white">
-              سياسة الالتزام الأكاديمي: دراسة كورس واحد في نفس الوقت
-            </h3>
-            <p className="text-sm text-slate-300 leading-relaxed">
-              عزيزي الطالب، حرصاً على تركيزك وتحصيلك العلمي المتميز، يُشترط إنهاء جميع محاضرات واختبارات كورس <span className="text-indigo-400 font-bold">"{userEnrolledCourse?.titleAr}"</span> بنسبة 100% قبل الانتقال والبدء في دورة أخرى.
-            </p>
-          </div>
-
-          {/* Current Progress Display */}
-          <div className="p-4 bg-[#131b2e] border border-white/5 rounded-2xl space-y-3 text-right">
-            <div className="flex justify-between text-xs text-slate-300 font-bold">
-              <span>نسبة تقدمك في {userEnrolledCourse?.titleAr}:</span>
-              <span className="text-indigo-400 font-mono">{enrolledCourseProgress?.completed} من {enrolledCourseProgress?.total} دروس ({enrolledCourseProgress?.percent}%)</span>
-            </div>
-            <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-to-r from-indigo-500 to-emerald-500 rounded-full transition-all duration-500"
-                style={{ width: `${enrolledCourseProgress?.percent || 0}%` }}
-              />
-            </div>
-          </div>
-
-          <button
-            onClick={() => userEnrolledCourse && handleCourseChange(userEnrolledCourse)}
-            className="w-full sm:w-auto px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 mx-auto cursor-pointer"
-          >
-            <span>العودة ومتابعة دراستي الحالية في {userEnrolledCourse?.titleAr}</span>
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-        </motion.div>
+          <span className="bg-emerald-500/20 border border-emerald-500/30 px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono shrink-0">
+            100% مصرح
+          </span>
+        </div>
       ) : (
-        /* NORMAL LEARNING CENTER WORKSPACE */
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Left column: Lessons menu with sequential & 5% badges */}
-          <div className="lg:col-span-1 bg-[#0f172a] border border-white/5 rounded-2xl p-5 h-fit space-y-4 shadow-xl">
-            <div className="pb-3 border-b border-white/5 flex items-center justify-between">
-              <h3 className="text-md font-bold text-slate-200 flex items-center gap-2">
-                <Layers className="w-4 h-4 text-indigo-400" />
-                <span>فهرس الدروس ({activeCourse.lessons.length})</span>
-              </h3>
-              {!isAdmin && accessLevel === "restricted_5pct" && (
-                <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold">
-                  عينة 5% مصرحة
-                </span>
-              )}
-            </div>
-            
-            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-              {activeCourse.lessons.map((lesson, idx) => {
-                const lessonDone = completedLessons.includes(lesson.id);
-                const isSelected = selectedLesson.id === lesson.id;
-                
-                // Sequential lock: idx > 0 and previous lesson not done
-                const prevDone = idx === 0 || completedLessons.includes(activeCourse.lessons[idx - 1].id);
-                const isSequentialLocked = !isAdmin && !prevDone;
-                
-                // 5% restricted lock
-                const is5PctLocked = !isAdmin && (accessLevel === "restricted_5pct") && (idx >= allowedLessons5Pct);
+        <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-300">
+          <div className="flex items-center gap-2 font-bold">
+            <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>حالة تصريح حسابك: عينة 5% (المحاضرة التمهيدية فقط) - تحتاج إلى تصريح 100% من المشرف لمتابعة باقي الدروس</span>
+          </div>
+          <button 
+            onClick={() => setShowRequestModal(true)}
+            className="bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-200 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+          >
+            <Send className="w-3 h-3" />
+            <span>طلب فتح 100%</span>
+          </button>
+        </div>
+      )}
 
-                const isLocked = isSequentialLocked || is5PctLocked;
-
-                return (
-                  <button
-                    key={lesson.id}
-                    onClick={() => handleLessonChange(lesson, idx)}
-                    className={`w-full text-right p-3.5 rounded-xl transition-all duration-200 flex items-center justify-between gap-3 border cursor-pointer ${
-                      isSelected
-                        ? "bg-indigo-600/15 border-indigo-500 text-white shadow-sm"
-                        : isLocked
-                        ? "bg-[#131b2e]/20 border-transparent text-slate-500 hover:bg-[#131b2e]/40"
-                        : "bg-[#131b2e]/40 border-transparent text-slate-300 hover:bg-[#131b2e] hover:border-white/5"
-                    }`}
-                  >
-                    <div className="space-y-1 overflow-hidden">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
-                          #{idx + 1}
-                        </span>
-                        <p className={`text-xs sm:text-sm font-bold leading-snug truncate ${
-                          isSelected ? "text-indigo-300" : isLocked ? "text-slate-500" : "text-slate-200"
-                        }`}>
-                          {lesson.titleAr}
-                        </p>
-                      </div>
-                      <p className="text-[10px] text-slate-500 font-mono ltr-dir">{lesson.duration}</p>
-                    </div>
-                    
-                    {lessonDone ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                    ) : isLocked ? (
-                      <div className="p-1 rounded bg-slate-800/80 text-amber-400 shrink-0" title={is5PctLocked ? "يتطلب تصريح 5%" : "يجب إكمال الدرس السابق أولاً"}>
-                        <Lock className="w-3.5 h-3.5" />
-                      </div>
-                    ) : (
-                      <div className="w-4 h-4 rounded-full border-2 border-slate-600 shrink-0" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Access request button if restricted */}
-            {!isAdmin && accessLevel === "restricted_5pct" && (
-              <div className="pt-3 border-t border-white/5">
-                <button
-                  onClick={() => setShowRequestModal(true)}
-                  className="w-full py-2.5 px-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>طلب فتح باقي الكورس (100%)</span>
-                </button>
-              </div>
+      {/* NORMAL LEARNING CENTER WORKSPACE */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* Left column: Lessons menu with sequential & 5% badges */}
+        <div className="lg:col-span-1 bg-[#0f172a] border border-white/5 rounded-2xl p-5 h-fit space-y-4 shadow-xl">
+          <div className="pb-3 border-b border-white/5 flex items-center justify-between">
+            <h3 className="text-md font-bold text-slate-200 flex items-center gap-2">
+              <Layers className="w-4 h-4 text-indigo-400" />
+              <span>فهرس الدروس ({activeCourse.lessons.length})</span>
+            </h3>
+            {!hasFullAccess && (
+              <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold">
+                عينة 5% مصرحة
+              </span>
             )}
           </div>
+          
+          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+            {activeCourse.lessons.map((lesson, idx) => {
+              const lessonDone = completedLessons.includes(lesson.id);
+              const isSelected = selectedLesson.id === lesson.id;
+              
+              // 5% restricted lock
+              const is5PctLocked = !hasFullAccess && (idx >= allowedLessons5Pct);
 
-          {/* Right columns: Main lesson workspace */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* CHECK 1: SEQUENTIAL LESSON LOCK SCREEN */}
-            {isLessonSequentiallyLocked ? (
-              <div className="bg-[#0f172a] border border-amber-500/30 rounded-2xl p-8 sm:p-12 text-center space-y-5 shadow-xl">
-                <div className="w-14 h-14 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center mx-auto">
-                  <Lock className="w-7 h-7" />
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-lg sm:text-xl font-bold text-white">المحاضرة مقفلة بالترتيب الأكاديمي</h3>
-                  <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
-                    يجب عليك أولاً إكمال واجتياز المحاضرة السابقة: <span className="text-indigo-400 font-bold">"{prevLessonObj?.titleAr}"</span> لفتح هذه المحاضرة.
-                  </p>
-                </div>
-                {prevLessonObj && (
-                  <button
-                    onClick={() => {
-                      setSelectedLesson(prevLessonObj);
-                      resetQuiz();
-                    }}
-                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer inline-flex items-center gap-2"
-                  >
-                    <span>الذهاب إلى {prevLessonObj.titleAr}</span>
-                    <ArrowLeft className="w-3.5 h-3.5" />
-                  </button>
-                )}
+              // Sequential lock: idx > 0 and previous lesson not done
+              const prevDone = idx === 0 || completedLessons.includes(activeCourse.lessons[idx - 1].id);
+              const isSequentialLocked = !isTeacherAdmin && !prevDone && !is5PctLocked;
+
+              const isLocked = is5PctLocked || isSequentialLocked;
+
+              return (
+                <button
+                  key={lesson.id}
+                  onClick={() => handleLessonChange(lesson, idx)}
+                  className={`w-full text-right p-3.5 rounded-xl transition-all duration-200 flex items-center justify-between gap-3 border cursor-pointer ${
+                    isSelected
+                      ? "bg-indigo-600/15 border-indigo-500 text-white shadow-sm"
+                      : isLocked
+                      ? "bg-[#131b2e]/20 border-transparent text-slate-500 hover:bg-[#131b2e]/40"
+                      : "bg-[#131b2e]/40 border-transparent text-slate-300 hover:bg-[#131b2e] hover:border-white/5"
+                  }`}
+                >
+                  <div className="space-y-1 overflow-hidden">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                        #{idx + 1}
+                      </span>
+                      <p className={`text-xs sm:text-sm font-bold leading-snug truncate ${
+                        isSelected ? "text-indigo-300" : isLocked ? "text-slate-500" : "text-slate-200"
+                      }`}>
+                        {lesson.titleAr}
+                      </p>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-mono ltr-dir">{lesson.duration}</p>
+                  </div>
+                  
+                  {lessonDone ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  ) : is5PctLocked ? (
+                    <div className="p-1 rounded bg-amber-500/10 text-amber-400 shrink-0" title="يتطلب تصريح 100% من المشرف">
+                      <Lock className="w-3.5 h-3.5" />
+                    </div>
+                  ) : isSequentialLocked ? (
+                    <div className="p-1 rounded bg-slate-800/80 text-slate-400 shrink-0" title="يجب إكمال المحاضرة السابقة أولاً">
+                      <Lock className="w-3.5 h-3.5" />
+                    </div>
+                  ) : (
+                    <div className="w-4 h-4 rounded-full border-2 border-slate-600 shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Access request button if restricted */}
+          {!hasFullAccess && (
+            <div className="pt-3 border-t border-white/5">
+              <button
+                onClick={() => setShowRequestModal(true)}
+                className="w-full py-2.5 px-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>طلب فتح باقي الكورس (100%)</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right columns: Main lesson workspace */}
+        <div className="lg:col-span-2 space-y-6">
+          
+          {/* CHECK 1: 5% CONTENT RESTRICTION SCREEN */}
+          {isLessonRestricted5Pct ? (
+            <div className="bg-[#0f172a] border-2 border-indigo-500/30 rounded-2xl p-8 sm:p-12 text-center space-y-6 shadow-2xl">
+              <div className="w-16 h-16 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto">
+                <Lock className="w-8 h-8" />
               </div>
-            ) : 
-
-            /* CHECK 2: 5% CONTENT RESTRICTION SCREEN */
-            isLessonRestricted5Pct ? (
-              <div className="bg-[#0f172a] border-2 border-indigo-500/30 rounded-2xl p-8 sm:p-12 text-center space-y-6 shadow-2xl">
-                <div className="w-16 h-16 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto">
-                  <Lock className="w-8 h-8" />
-                </div>
-                <div className="space-y-3">
-                  <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-bold rounded-full">
-                    محتوى مقفل - عينة الـ 5%
-                  </span>
-                  <h3 className="text-xl font-bold text-white">يتطلب هذا الدرس تصريحاً من المشرف العام</h3>
-                  <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
-                    بموجب سياسة الأكاديمية، يُسمح لك بمشاهدة عينة 5% (المحاضرة التمهيدية). لإكمال باقي الكورس ومشاهدة هذا الدرس، يرجى تقديم طلب للأستاذ <span className="text-indigo-400 font-bold">عبدالوهاب أحمد</span> لتفعيل الصلاحية الكاملة لحسابك.
-                  </p>
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    onClick={() => setShowRequestModal(true)}
-                    className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs sm:text-sm transition-all shadow-lg shadow-indigo-600/25 inline-flex items-center gap-2 cursor-pointer"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span>طلب فتح الكورس بالكامل (100%) من الأدمن</span>
-                  </button>
-                </div>
+              <div className="space-y-3">
+                <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-bold rounded-full">
+                  محتوى مقفل - عينة الـ 5%
+                </span>
+                <h3 className="text-xl font-bold text-white">يتطلب هذا الدرس تصريحاً من المشرف العام</h3>
+                <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+                  بموجب سياسة الأكاديمية، حسابك حالياً مصرح بنسبة 5% فقط (المحاضرة التمهيدية الأولى). لإكمال باقي الكورس ومشاهدة هذا الدرس، يرجى طلب تصريح من المشرف العام <span className="text-indigo-400 font-bold">المهندس عبدالوهاب أحمد</span> لتفعيل الصلاحية الكاملة (100%) لحسابك.
+                </p>
               </div>
-            ) : (
+
+              <div className="pt-2">
+                <button
+                  onClick={() => setShowRequestModal(true)}
+                  className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs sm:text-sm transition-all shadow-lg shadow-indigo-600/25 inline-flex items-center gap-2 cursor-pointer"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>طلب فتح الكورس بالكامل (100%) من الأدمن</span>
+                </button>
+              </div>
+            </div>
+          ) : 
+
+          /* CHECK 2: SEQUENTIAL LESSON LOCK SCREEN */
+          isLessonSequentiallyLocked ? (
+            <div className="bg-[#0f172a] border border-amber-500/30 rounded-2xl p-8 sm:p-12 text-center space-y-5 shadow-xl">
+              <div className="w-14 h-14 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center mx-auto">
+                <Lock className="w-7 h-7" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg sm:text-xl font-bold text-white">المحاضرة مقفلة بالترتيب الأكاديمي</h3>
+                <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+                  يجب عليك أولاً إكمال واجتياز المحاضرة السابقة: <span className="text-indigo-400 font-bold">"{prevLessonObj?.titleAr}"</span> لفتح هذه المحاضرة.
+                </p>
+              </div>
+              {prevLessonObj && (
+                <button
+                  onClick={() => {
+                    setSelectedLesson(prevLessonObj);
+                    resetQuiz();
+                  }}
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer inline-flex items-center gap-2"
+                >
+                  <span>الذهاب إلى {prevLessonObj.titleAr}</span>
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          ) : (
 
             /* UNLOCKED & ACCESSIBLE LESSON VIEW */
             <>
@@ -602,7 +558,6 @@ export default function LearningCenter({
           </div>
 
         </div>
-      )}
 
       {/* REQUEST 100% ACCESS MODAL */}
       <AnimatePresence>
