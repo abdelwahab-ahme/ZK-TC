@@ -115,12 +115,12 @@ export default function AdminPanel({
   // Authentication check
   const handleUnlock = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === "zakora" || pin === "123456" || pin === "admin") {
+    if (pin === "202210609@Admin") {
       setIsUnlocked(true);
       setPinError("");
       localStorage.setItem("admin_unlocked", "true");
     } else {
-      setPinError("رمز المرور خاطئ! الرجاء إدخال الرمز الصحيح (zakora أو 123456)");
+      setPinError("رمز المرور خاطئ! الرجاء إدخال الرمز الصحيح ");
     }
   };
 
