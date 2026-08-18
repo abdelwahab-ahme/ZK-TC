@@ -2,11 +2,22 @@ export interface UserProfile {
   username: string;
   avatar: string;
   points: number;
-  solvedProblems: string[]; // Challenge IDs
-  completedLessons: string[]; // Lesson IDs
-  completedRoadmapNodes: string[]; // Node IDs
-}
+  solvedProblems: string[];
+  completedLessons: string[];
+  completedRoadmapNodes: string[];
 
+  // الدروس التي شاهدها الطالب بالكامل
+  watchedLessons: string[];
+
+  // الاختبارات التي اجتازها الطالب
+  passedQuizzes: string[];
+
+  // صلاحية المحتوى
+  accessLevel: "full" | "restricted_5pct" | "blocked";
+
+  // الكورس الحالي
+  activeCourseId?: string | null;
+}
 export interface Lesson {
   id: string;
   title: string;
@@ -108,9 +119,18 @@ export interface VisitorRecord {
   joinedAt: string;
   lastVisitAt: string;
   visitCount: number;
+
   accessLevel: "full" | "restricted_5pct" | "blocked";
+
   activeCourseId?: string | null;
+
   completedLessons?: string[];
+
+  watchedLessons?: string[];
+
+  passedQuizzes?: string[];
+
   points?: number;
+
   notes?: string;
 }
