@@ -407,9 +407,7 @@ export default function AdminPanel({
             <p className="text-slate-400">
               • البريد الحالي: <span className="text-indigo-400 font-mono font-bold">{userEmail || "مسؤول النظام"}</span>
             </p>
-            <p className="text-slate-500">
-              • رمز المرور السري الافتراضي: <span className="text-emerald-400 font-bold font-mono">zakora</span> أو <span className="text-emerald-400 font-bold font-mono">123456</span>
-            </p>
+            
           </div>
         </div>
       </div>
