@@ -442,6 +442,7 @@ export default function AdminPanel({
             </p>
             <p className="text-slate-500">
               • برجاء ادخال رمز المرور السري الافتراضي 
+            </p>
           </div>
         </div>
       </div>
