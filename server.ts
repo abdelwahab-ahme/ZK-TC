@@ -1,10 +1,9 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 
-dotenv.config({ path: ".env.local" });
+
 
 interface VisitorRecord {
   id: string;
@@ -681,15 +680,7 @@ async function startServer() {
     });
   }
 
-  app.listen(
-    PORT,
-    "0.0.0.0",
-    () => {
-      console.log(
-        `Zakora-TC Fullstack Server running on http://0.0.0.0:${PORT}`
-      );
-    }
-  );
+  
 }
 
 startServer();
