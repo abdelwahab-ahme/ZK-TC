@@ -23,7 +23,13 @@ export default async function handler(req, res) {
     if (!supabaseUrl) {
       return res.status(500).json({
         success: false,
-        error: "VITE_SUPABASE_URL is missing in Vercel"
+        error: "VITE_SUPABASE_URL is missing in Vercel",
+        debug: {
+          nodeEnv: process.env.NODE_ENV,
+          vercelEnv: process.env.VERCEL_ENV,
+          hasUrl: !!process.env.VITE_SUPABASE_URL,
+          hasSecret: !!process.env.SUPABASE_SECRET_KEY
+        }
       });
     }
 
