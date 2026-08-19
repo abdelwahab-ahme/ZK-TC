@@ -1,10 +1,21 @@
 import { createClient } from "@supabase/supabase-js";
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req, res) {
   try {
-    // ==============================
-    // CHECK ENVIRONMENT VARIABLES
-    // ==============================
+    console.log("ENV CHECK:", {
+      hasUrl: !!process.env.VITE_SUPABASE_URL,
+      hasSecret: !!process.env.SUPABASE_SECRET_KEY,
+      urlPrefix: process.env.VITE_SUPABASE_URL
+        ? process.env.VITE_SUPABASE_URL.substring(0, 20)
+        : null
+    });
+
+    if (req.method !== "GET") {
+      return res.status(405).json({
+        success: false,
+        error: "Method not allowed"
+      });
+    }
 
     const supabaseUrl = process.env.VITE_SUPABASE_URL;
     const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
@@ -23,29 +34,10 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // ==============================
-    // SUPABASE
-    // ==============================
-
     const supabase = createClient(
       supabaseUrl,
       supabaseSecretKey
     );
-
-    // ==============================
-    // METHOD
-    // ==============================
-
-    if (req.method !== "GET") {
-      return res.status(405).json({
-        success: false,
-        error: "Method not allowed"
-      });
-    }
-
-    // ==============================
-    // GET STUDENTS
-    // ==============================
 
     const { data, error } = await supabase
       .from("students")
@@ -65,49 +57,30 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // ==============================
-    // RESPONSE
-    // ==============================
-
-    const visitors = (data || []).map(
-      (student: any) => ({
-        id: student.id,
-        name: student.name,
-        email: student.email,
-        avatar: student.avatar,
-        isGuest: student.is_guest,
-        joinedAt: student.joined_at,
-        lastVisitAt: student.last_visit_at,
-        visitCount: student.visit_count,
-        accessLevel: student.access_level,
-        activeCourseId:
-          student.active_course_id,
-
-        completedLessons:
-          student.completed_lessons || [],
-
-        points:
-          student.points || 0,
-
-        notes:
-          student.notes || ""
-      })
-    );
+    const visitors = (data || []).map((student) => ({
+      id: student.id,
+      name: student.name,
+      email: student.email,
+      avatar: student.avatar,
+      isGuest: student.is_guest,
+      joinedAt: student.joined_at,
+      lastVisitAt: student.last_visit_at,
+      visitCount: student.visit_count,
+      accessLevel: student.access_level,
+      activeCourseId: student.active_course_id,
+      completedLessons: student.completed_lessons || [],
+      points: student.points || 0,
+      notes: student.notes || ""
+    }));
 
     return res.status(200).json(visitors);
 
-  } catch (error: any) {
-
-    console.error(
-      "VISITORS API CRASH:",
-      error
-    );
+  } catch (error) {
+    console.error("VISITORS API CRASH:", error);
 
     return res.status(500).json({
       success: false,
-      error:
-        error?.message ||
-        "Unknown server error"
+      error: error?.message || "Unknown server error"
     });
   }
 }
