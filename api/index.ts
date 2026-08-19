@@ -17,21 +17,21 @@ const supabase = createClient(
   supabaseSecretKey
 );
 
-// ===============================
+// ==============================
 // HEALTH
-// ===============================
+// ==============================
 
-app.get("/api/health", (req, res) => {
+app.get("/api/health", async (req, res) => {
   res.json({
     status: "ok",
-    server: "Zakora-TC Backend API",
+    server: "Zakora-TC API",
     database: "Supabase"
   });
 });
 
-// ===============================
+// ==============================
 // GET VISITORS
-// ===============================
+// ==============================
 
 app.get("/api/visitors", async (req, res) => {
   try {
@@ -43,7 +43,7 @@ app.get("/api/visitors", async (req, res) => {
       });
 
     if (error) {
-      console.error("Supabase error:", error);
+      console.error("GET visitors:", error);
 
       return res.status(500).json({
         success: false,
@@ -70,7 +70,8 @@ app.get("/api/visitors", async (req, res) => {
     return res.json(visitors);
 
   } catch (error) {
-    console.error(error);
+
+    console.error("GET visitors error:", error);
 
     return res.status(500).json({
       success: false,
@@ -79,12 +80,14 @@ app.get("/api/visitors", async (req, res) => {
   }
 });
 
-// ===============================
+// ==============================
 // LOG VISITOR
-// ===============================
+// ==============================
 
 app.post("/api/visitors/log", async (req, res) => {
+
   try {
+
     const {
       name,
       email,
@@ -115,18 +118,31 @@ app.post("/api/visitors/log", async (req, res) => {
       .maybeSingle();
 
     if (searchError) {
+
+      console.error(
+        "Search student:",
+        searchError
+      );
+
       return res.status(500).json({
         success: false,
         error: searchError.message
       });
     }
 
-    // Existing user
+    // ==============================
+    // EXISTING USER
+    // ==============================
+
     if (existing) {
 
       const updatedStudent = {
-        name: name || existing.name,
-        avatar: avatar || existing.avatar,
+
+        name:
+          name || existing.name,
+
+        avatar:
+          avatar || existing.avatar,
 
         last_visit_at:
           new Date().toISOString(),
@@ -152,7 +168,7 @@ app.post("/api/visitors/log", async (req, res) => {
 
       const {
         data: updated,
-        error: updateError
+        error
       } = await supabase
         .from("students")
         .update(updatedStudent)
@@ -160,10 +176,16 @@ app.post("/api/visitors/log", async (req, res) => {
         .select()
         .single();
 
-      if (updateError) {
+      if (error) {
+
+        console.error(
+          "Update student:",
+          error
+        );
+
         return res.status(500).json({
           success: false,
-          error: updateError.message
+          error: error.message
         });
       }
 
@@ -174,24 +196,19 @@ app.post("/api/visitors/log", async (req, res) => {
       });
     }
 
-    // Admin
-    const isAdmin =
-      normalizedEmail.includes("abdelwahab") ||
-      normalizedEmail.includes("hagag") ||
-      normalizedEmail ===
-        "zakora.tc.admin@gmail.com" ||
-      normalizedEmail.includes("admin") ||
-      normalizedEmail.endsWith("@zakora.tc");
+    // ==============================
+    // NEW USER
+    // ==============================
 
     const now =
       new Date().toISOString();
 
     const newStudent = {
+
       id:
-        `user_${Date.now()}_` +
-        Math.random()
+        `user_${Date.now()}_${Math.random()
           .toString(36)
-          .substring(2, 7),
+          .substring(2, 7)}`,
 
       name:
         name ||
@@ -199,7 +216,8 @@ app.post("/api/visitors/log", async (req, res) => {
           ? "زائر جديد"
           : normalizedEmail.split("@")[0]),
 
-      email: normalizedEmail,
+      email:
+        normalizedEmail,
 
       avatar:
         avatar ||
@@ -207,18 +225,20 @@ app.post("/api/visitors/log", async (req, res) => {
           ? "🤖"
           : "💻"),
 
-      is_guest: !!isGuest,
+      is_guest:
+        !!isGuest,
 
-      joined_at: now,
+      joined_at:
+        now,
 
-      last_visit_at: now,
+      last_visit_at:
+        now,
 
-      visit_count: 1,
+      visit_count:
+        1,
 
       access_level:
-        isAdmin
-          ? "full"
-          : "restricted_5pct",
+        "restricted_5pct",
 
       active_course_id:
         activeCourseId || null,
@@ -237,17 +257,23 @@ app.post("/api/visitors/log", async (req, res) => {
 
     const {
       data: created,
-      error: insertError
+      error
     } = await supabase
       .from("students")
       .insert(newStudent)
       .select()
       .single();
 
-    if (insertError) {
+    if (error) {
+
+      console.error(
+        "Create student:",
+        error
+      );
+
       return res.status(500).json({
         success: false,
-        error: insertError.message
+        error: error.message
       });
     }
 
@@ -258,6 +284,7 @@ app.post("/api/visitors/log", async (req, res) => {
     });
 
   } catch (error) {
+
     console.error(
       "Visitor log error:",
       error
